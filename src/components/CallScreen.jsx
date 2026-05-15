@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useSpeechRecognition } from "../hooks/useSpeechRecognition.js";
 import { useSpeechSynthesis } from "../hooks/useSpeechSynthesis.js";
 import { dispatcherReply } from "../lib/api.js";
-import { playEndBeep } from "../lib/sound.js";
+import { playEndBeep, playTypingLoop, playHoldTone } from "../lib/sound.js";
+
+const DISPATCH_RE = /\b(stand by|hold on|dispatching|dispatch|en route|on (?:the|their) way|responding|heading your way|units (?:are|have been)|sending .+(?:fire|ems|ambulance|medic|rescue))\b/i;
 import { reportAdmin } from "../lib/admin.js";
 
 const END_TAG = "[END_CALL]";
@@ -27,6 +29,7 @@ export default function CallScreen({ scenario, onEnd }) {
 
   const synth = useSpeechSynthesis();
   const messagesRef = useRef(messages);
+  const typingStopRef = useRef(null);
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
@@ -54,6 +57,13 @@ export default function CallScreen({ scenario, onEnd }) {
         const next = [...history, { role: "assistant", content: cleaned }];
         setMessages(next);
         setThinking(false);
+
+        // Play radio dispatch tone when units are sent, then wait for it to finish.
+        if (DISPATCH_RE.test(cleaned)) {
+          playHoldTone();
+          await new Promise((r) => setTimeout(r, 950));
+        }
+
         reportAdmin({
           callerStatus: "speaking-dispatcher",
           messages: next,
@@ -117,6 +127,20 @@ export default function CallScreen({ scenario, onEnd }) {
     return () => stt.stop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Start/stop CAD typing sounds while waiting for dispatcher reply.
+  useEffect(() => {
+    if (thinking) {
+      typingStopRef.current = playTypingLoop();
+    } else {
+      typingStopRef.current?.();
+      typingStopRef.current = null;
+    }
+    return () => {
+      typingStopRef.current?.();
+      typingStopRef.current = null;
+    };
+  }, [thinking]);
 
   // Stream interim transcripts to admin so the projector can show
   // the kid's words in real time.

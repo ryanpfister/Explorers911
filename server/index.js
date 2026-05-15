@@ -49,8 +49,8 @@ function formatHistoryAsPrompt(history) {
   );
   const turnCount = history.filter((m) => m.role === "assistant").length;
   const endCallHint =
-    turnCount >= 4
-      ? " Append [END_CALL] to this response if you have already dispatched units AND given pre-arrival instructions."
+    turnCount >= 10
+      ? " Append [END_CALL] to this response if you have already dispatched units, given at least two pre-arrival instructions, AND told the caller to stay on the line."
       : "";
   lines.push(
     "",
