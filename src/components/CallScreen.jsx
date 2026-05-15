@@ -45,6 +45,8 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
   const recorderStreamRef = useRef(null);
   const recorderMimeRef = useRef("audio/webm");
   const [uploadStatus, setUploadStatus] = useState(null); // "uploading" | "saved" | "failed" | null
+  const [recordingActive, setRecordingActive] = useState(false);
+  const [recordingError, setRecordingError] = useState(null);
   const agentRef = useRef(agent);
   useEffect(() => {
     agentRef.current = agent;
@@ -171,11 +173,13 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
   // Record the caller's actual voice to a webm/mp4 blob and upload at end-of-call.
   const startRecording = useCallback(async () => {
     if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
-      console.warn("[recording] mediaDevices unavailable");
+      setRecordingError("mediaDevices unavailable");
+      reportAdmin({ recordingState: "unsupported" });
       return false;
     }
     if (typeof MediaRecorder === "undefined") {
-      console.warn("[recording] MediaRecorder unavailable on this browser");
+      setRecordingError("MediaRecorder unsupported on this browser");
+      reportAdmin({ recordingState: "unsupported" });
       return false;
     }
     try {
@@ -200,14 +204,21 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
           console.log(`[recording] chunk +${e.data.size}B`);
         }
       };
-      rec.onerror = (e) => console.warn("[recording] recorder error", e);
-      // No timeslice — collect everything at stop(). More reliable on iOS Safari.
+      rec.onerror = (e) => {
+        console.warn("[recording] recorder error", e);
+        setRecordingError("recorder error");
+        reportAdmin({ recordingState: "failed" });
+      };
       rec.start();
       recorderRef.current = rec;
+      setRecordingActive(true);
+      reportAdmin({ recordingState: "recording" });
       console.log(`[recording] started mime=${recorderMimeRef.current}`);
       return true;
     } catch (e) {
       console.warn("[recording] failed to start:", e);
+      setRecordingError(e?.message || "permission denied");
+      reportAdmin({ recordingState: "failed" });
       return false;
     }
   }, []);
@@ -219,6 +230,8 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
       return;
     }
     setUploadStatus("uploading");
+    setRecordingActive(false);
+    reportAdmin({ recordingState: "uploading" });
     // stop() automatically fires a final dataavailable before onstop.
     await new Promise((resolve) => {
       const finish = () => resolve();
@@ -240,6 +253,7 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
     if (!sid || blob.size === 0) {
       console.warn("[recording] no session id or empty blob, skipping upload");
       setUploadStatus("failed");
+      reportAdmin({ recordingState: "failed", recordingBytes: 0 });
       return;
     }
     try {
@@ -250,10 +264,17 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
       });
       const body = await res.json().catch(() => ({}));
       console.log("[recording] upload result", res.status, body);
-      setUploadStatus(res.ok ? "saved" : "failed");
+      if (res.ok) {
+        setUploadStatus("saved");
+        reportAdmin({ recordingState: "saved", recordingBytes: blob.size });
+      } else {
+        setUploadStatus("failed");
+        reportAdmin({ recordingState: "failed", recordingBytes: blob.size });
+      }
     } catch (e) {
       console.warn("[recording] upload failed:", e);
       setUploadStatus("failed");
+      reportAdmin({ recordingState: "failed", recordingBytes: blob.size });
     }
   }, []);
 
@@ -486,11 +507,19 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
         </div>
       )}
 
+      {recordingError && (
+        <div className="bg-red-900/70 border-b border-red-700 text-red-100 px-4 py-1.5 text-[11px] text-center font-mono">
+          ⚠ Voice recording not available: {recordingError}
+        </div>
+      )}
+
       {/* Status bar */}
       <div className="px-5 pt-5 pb-2 flex items-center justify-between text-[11px] font-mono text-stone-400">
         <span className="inline-flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-          <span className="text-red-300 font-bold tracking-widest">REC</span>
+          <span className={`w-1.5 h-1.5 rounded-full ${recordingActive ? "bg-red-500 animate-pulse" : "bg-stone-600"}`} />
+          <span className={`font-bold tracking-widest ${recordingActive ? "text-red-300" : "text-stone-500"}`}>
+            {recordingActive ? "REC ●" : "REC OFF"}
+          </span>
         </span>
         <span className="text-stone-400 truncate max-w-[50%] text-center text-[10px] uppercase tracking-widest">
           {scenario.title}

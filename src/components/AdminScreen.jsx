@@ -249,6 +249,17 @@ function SessionCard({ s, onSelect, onSpotlight, now }) {
           </span>
         )}
       </div>
+      <div className="text-[10px] flex items-center gap-2">
+        {s.recordingState === "recording" && <span className="text-red-300">🎙 REC</span>}
+        {s.recordingState === "uploading" && <span className="text-amber-300">⏳ uploading…</span>}
+        {s.recordingState === "saved" && (
+          <span className="text-emerald-300">
+            ✓ recording {s.recordingBytes ? `${Math.round(s.recordingBytes / 1024)}KB` : "saved"}
+          </span>
+        )}
+        {s.recordingState === "failed" && <span className="text-red-300">⚠ recording failed</span>}
+        {s.recordingState === "unsupported" && <span className="text-stone-500">🚫 no MediaRecorder</span>}
+      </div>
 
       <div className="grid grid-cols-4 gap-1 text-[10px]">
         {coverage.map((c) => (

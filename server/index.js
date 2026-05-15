@@ -318,6 +318,8 @@ const PATCHABLE = [
   "difficulty",
   "hasRecording",
   "score",
+  "recordingState",
+  "recordingBytes",
 ];
 
 app.post("/api/admin/session/:id", (req, res) => {
