@@ -185,25 +185,10 @@ export const SCENARIO_META = {
 
 const CPR_SCENARIOS = new Set(["cardiac_arrest_grandpa", "drowning_beach"]);
 
-// Town → fire department lookup for radio dispatches.
+// Town → fire department lookup for radio dispatches. All scenarios are
+// in Middle Island, so this is a single entry.
 const TOWN_DEPT = {
-  Middle Island: "Middle Island Fire Department",
   "Middle Island": "Middle Island Fire Department",
-  Middle Island: "Middle Island Fire Department",
-  Middle Island: "Middle Island Fire Department",
-  Middle Island: "Middle Island Fire Department",
-  Middle Island: "Middle Island Fire Department",
-  "Middle Island": "Middle Island Fire Department",
-  Middle Island: "Middle Island Fire Department",
-  "Middle Island": "Middle Island Fire Department",
-  Middle Island: "Middle Island Fire Department",
-  Middle Island: "Middle Island Fire Department",
-  "Middle Island": "Middle Island Fire Department",
-  Middle Island: "Middle Island Fire Department",
-  "Middle Island": "Middle Island Fire Department",
-  Middle Island: "Middle Island Fire Department",
-  Middle Island: "Middle Island Fire Department",
-  "Artist Lake, Middle Island": "Middle Island Fire Department",
 };
 
 export function pdDispatcherSystemPrompt(scenarioId, pd, callerName) {
