@@ -19,6 +19,7 @@ import {
   subscribe,
   heartbeat,
   getAllSessions,
+  getSession,
 } from "./sessions.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -204,10 +205,15 @@ app.post("/api/chat", async (req, res) => {
       userPrompt: formatHistoryAsPrompt(history, { agent, mode }),
     });
     // Extract [DISPATCH:...] from FRES dispatcher replies and broadcast to admin.
+    // Only the FIRST dispatch for a session is stored — if the AI re-emits the tag
+    // in a later turn it would generate a new timestamp and re-trigger the admin announcement.
     if (mode === "caller" && agent === "fres" && sessionId) {
       const dispatchInfo = parseDispatchTag(reply);
       if (dispatchInfo) {
-        patchSession(sessionId, { dispatch: dispatchInfo });
+        const existing = getSession(sessionId);
+        if (!existing?.dispatch) {
+          patchSession(sessionId, { dispatch: dispatchInfo });
+        }
       }
     }
     res.json({ reply });

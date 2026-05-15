@@ -67,21 +67,32 @@ export function primeSpeechSynthesis() {
 export function useSpeechSynthesis({ voiceSeed = 0 } = {}) {
   const [speaking, setSpeaking] = useState(false);
   const voiceRef = useRef(null);
+  const lockedRef = useRef(false);
   const onEndRef = useRef(null);
 
   useEffect(() => {
     if (!speechSynthesisSupported) return;
-    const updateVoice = () => {
+    lockedRef.current = false;
+    voiceRef.current = null;
+    const tryPick = () => {
+      if (lockedRef.current) return;
       const voices = window.speechSynthesis.getVoices();
+      // Only lock in once the browser has actually populated voices.
+      if (!voices || voices.length === 0) return;
       voiceRef.current = pickDispatcherVoice(voices, voiceSeed);
+      if (voiceRef.current) lockedRef.current = true;
     };
-    updateVoice();
-    window.speechSynthesis.onvoiceschanged = updateVoice;
-    // Some browsers populate the list asynchronously; re-check shortly.
-    const t = setTimeout(updateVoice, 250);
+    tryPick();
+    window.speechSynthesis.onvoiceschanged = tryPick;
+    // Some browsers populate the list asynchronously; re-check a few times then stop.
+    const t1 = setTimeout(tryPick, 250);
+    const t2 = setTimeout(tryPick, 1000);
+    const t3 = setTimeout(tryPick, 2500);
     return () => {
       window.speechSynthesis.onvoiceschanged = null;
-      clearTimeout(t);
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
     };
   }, [voiceSeed]);
 
@@ -91,7 +102,9 @@ export function useSpeechSynthesis({ voiceSeed = 0 } = {}) {
       return;
     }
     if (!voiceRef.current) {
-      voiceRef.current = pickDispatcherVoice(window.speechSynthesis.getVoices());
+      // Fallback uses the same seed so we don't accidentally pick a different voice.
+      voiceRef.current = pickDispatcherVoice(window.speechSynthesis.getVoices(), voiceSeed);
+      if (voiceRef.current) lockedRef.current = true;
     }
 
     window.speechSynthesis.cancel();
@@ -119,7 +132,7 @@ export function useSpeechSynthesis({ voiceSeed = 0 } = {}) {
         onEndRef.current?.();
       }
     }, 30);
-  }, []);
+  }, [voiceSeed]);
 
   const stop = useCallback(() => {
     if (!speechSynthesisSupported) return;

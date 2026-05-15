@@ -519,7 +519,9 @@ export default function AdminScreen() {
     if (!audioReady) return;
     for (const s of Object.values(sessions)) {
       if (!s.dispatch) continue;
-      const key = `${s.id}:${s.dispatch.timestamp}`;
+      // Dedup on content (not timestamp) — server may emit fresh timestamps if the
+      // AI re-mentions dispatch in a later turn.
+      const key = `${s.id}:${s.dispatch.code || ""}:${s.dispatch.department || ""}:${s.dispatch.location || ""}`;
       if (spokenDispatchKeys.current.has(key)) continue;
       spokenDispatchKeys.current.add(key);
       const enriched = { ...s.dispatch, sessionId: s.id };
