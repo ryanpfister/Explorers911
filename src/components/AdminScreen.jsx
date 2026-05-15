@@ -171,7 +171,7 @@ function parseFeedbackList(text, label, nextLabels) {
   return items;
 }
 
-function SessionCard({ s, onSelect, now }) {
+function SessionCard({ s, onSelect, onSpotlight, now }) {
   const scenario = s.scenarioId ? scenarioById(s.scenarioId) : null;
   const badge = statusBadge(s);
   const elapsedMs = s.startedAt
@@ -187,10 +187,19 @@ function SessionCard({ s, onSelect, now }) {
     .find((m) => m.role === "user");
 
   return (
-    <button
+    <div
       onClick={onSelect}
-      className="text-left rounded-2xl bg-stone-900 border border-stone-800 hover:border-stone-600 transition p-5 flex flex-col gap-3 min-h-[260px]"
+      className="text-left rounded-2xl bg-stone-900 border border-stone-800 hover:border-stone-600 transition p-5 flex flex-col gap-3 min-h-[260px] cursor-pointer relative"
     >
+      {onSpotlight && s.status === "in-call" && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onSpotlight(); }}
+          className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-amber-700/80 hover:bg-amber-600 text-white text-[10px] font-bold tracking-widest uppercase"
+          title="Pin this call to the projector"
+        >
+          ⭐ Spot
+        </button>
+      )}
       <div className="flex items-start gap-3">
         <div className="text-4xl shrink-0" aria-hidden>
           {scenario?.emoji || "📞"}
@@ -289,7 +298,7 @@ function SessionCard({ s, onSelect, now }) {
           </div>
         )}
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -508,6 +517,9 @@ export default function AdminScreen() {
   const [audioReady, setAudioReady] = useState(false);
   const [reviewing, setReviewing] = useState(false);
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
+  const [spotlightId, setSpotlightId] = useState(null);
   const spokenDispatchKeys = useRef(new Set());
 
   useEffect(() => {
@@ -527,7 +539,7 @@ export default function AdminScreen() {
 
   // Watch for new dispatch events and announce them over the TV speakers.
   useEffect(() => {
-    if (!audioReady) return;
+    if (!audioReady || muted) return;
     for (const s of Object.values(sessions)) {
       if (!s.dispatch) continue;
       // Dedup on content (not timestamp) — server may emit fresh timestamps if the
@@ -539,7 +551,7 @@ export default function AdminScreen() {
       setLatestDispatch(enriched);
       announceDispatch(enriched);
     }
-  }, [sessions, audioReady]);
+  }, [sessions, audioReady, muted]);
 
   const handleEnableAudio = () => {
     // iOS/Safari and Chrome require a user gesture before SpeechSynthesis works.
@@ -611,6 +623,14 @@ export default function AdminScreen() {
       .sort((a, b) => (b.score || 0) - (a.score || 0));
   }, [sessions]);
 
+  const classAverage = useMemo(() => {
+    if (leaderboard.length === 0) return null;
+    const sum = leaderboard.reduce((a, s) => a + (s.score || 0), 0);
+    return Math.round(sum / leaderboard.length);
+  }, [leaderboard]);
+
+  const callsiteUrl = typeof window !== "undefined" ? window.location.origin : "";
+
   return (
     <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col">
       {/* Header */}
@@ -654,6 +674,14 @@ export default function AdminScreen() {
                 {stats.ended}
               </div>
             </div>
+            <div>
+              <div className="text-stone-500 text-[10px] uppercase tracking-widest">
+                Class Avg
+              </div>
+              <div className="text-amber-300 text-xl font-bold tabular-nums">
+                {classAverage !== null ? classAverage : "—"}
+              </div>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -692,8 +720,25 @@ export default function AdminScreen() {
               🔊 Enable Dispatch Audio
             </button>
           ) : (
-            <span className="text-emerald-300 text-xs font-mono">🔊 audio live</span>
+            <button
+              onClick={() => setMuted((m) => !m)}
+              className={`px-3 py-1.5 rounded-lg border text-sm font-bold ${
+                muted
+                  ? "bg-red-700 border-red-600 text-white"
+                  : "bg-stone-800 border-stone-700 text-stone-200 hover:bg-stone-700"
+              }`}
+              title="Mute / unmute dispatch announcements"
+            >
+              {muted ? "🔇 Muted" : "🔊 Live"}
+            </button>
           )}
+          <button
+            onClick={() => setQrOpen(true)}
+            className="px-3 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 border border-stone-700 text-stone-200 text-sm font-bold"
+            title="Show QR code so kids can scan to open the app"
+          >
+            📱 QR
+          </button>
           <button
             onClick={() => setReviewing(true)}
             disabled={reviewable.length === 0}
@@ -766,6 +811,7 @@ export default function AdminScreen() {
                 key={s.id}
                 s={s}
                 onSelect={() => setSelectedId(s.id)}
+                onSpotlight={() => setSpotlightId(s.id)}
                 now={now}
               />
             ))}
@@ -794,6 +840,137 @@ export default function AdminScreen() {
           onClose={() => setLeaderboardOpen(false)}
         />
       )}
+
+      {qrOpen && (
+        <QrModal url={callsiteUrl} onClose={() => setQrOpen(false)} />
+      )}
+
+      {spotlightId && (
+        <SpotlightView
+          session={sessions[spotlightId]}
+          onClose={() => setSpotlightId(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function QrModal({ url, onClose }) {
+  // Use the qrserver.com API for a no-dependency QR. The URL is a sessionless,
+  // public site URL — no PII — so this is safe to send to a public renderer.
+  const src = `https://api.qrserver.com/v1/create-qr-code/?size=480x480&data=${encodeURIComponent(url)}`;
+  return (
+    <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-6" onClick={onClose}>
+      <div className="bg-stone-950 border border-stone-800 rounded-3xl p-8 max-w-md text-center" onClick={(e) => e.stopPropagation()}>
+        <div className="text-stone-100 text-2xl font-black mb-2">Scan to join</div>
+        <div className="text-stone-400 text-sm mb-5">Have explorers point their phone camera here.</div>
+        <img src={src} alt="QR code" className="w-72 h-72 bg-white rounded-xl p-2 mx-auto" />
+        <div className="text-stone-300 font-mono text-sm mt-4 break-all">{url}</div>
+        <button onClick={onClose} className="mt-5 px-5 py-2 rounded-lg bg-stone-800 hover:bg-stone-700 border border-stone-700 text-stone-200">
+          Close
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SpotlightView({ session, onClose }) {
+  const [hintText, setHintText] = useState("");
+  const [sending, setSending] = useState(false);
+  const scrollRef = useRef(null);
+  const scenario = session?.scenarioId ? scenarioById(session.scenarioId) : null;
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+  }, [session?.messages, session?.interim]);
+
+  if (!session) return null;
+
+  const sendHint = async () => {
+    if (!hintText.trim()) return;
+    setSending(true);
+    try {
+      await fetch(`/api/admin/session/${encodeURIComponent(session.id)}/hint`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: hintText.trim() }),
+      });
+      setHintText("");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black flex flex-col text-stone-100">
+      <div className="px-10 py-5 border-b border-stone-800 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="text-5xl">{scenario?.emoji || "📞"}</div>
+          <div>
+            <div className="text-stone-100 text-3xl font-black tracking-tight">
+              {session.callerName || "Caller"}
+            </div>
+            <div className="text-stone-400 text-base">
+              {scenario?.title || "Unknown"} · {scenario?.location || ""}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="px-3 py-1 rounded-full bg-red-700/80 text-white text-xs font-bold tracking-widest uppercase animate-pulse">
+            ● Live Spotlight
+          </span>
+          <button onClick={onClose} className="px-4 py-2 rounded-lg bg-stone-800 hover:bg-stone-700 border border-stone-700">
+            Exit
+          </button>
+        </div>
+      </div>
+
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-10 py-6 space-y-3">
+        {(session.messages || []).map((m, i) => (
+          <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+            <div className={`max-w-[80%] rounded-2xl px-5 py-3 text-2xl leading-snug ${
+              m.role === "user"
+                ? "bg-red-600 text-white rounded-br-md"
+                : m.agent === "pd"
+                  ? "bg-blue-900/70 text-stone-100 rounded-bl-md border border-blue-800/60"
+                  : "bg-stone-800 text-stone-100 rounded-bl-md"
+            }`}>
+              <div className="text-[10px] uppercase opacity-70 mb-1 tracking-widest">
+                {m.role === "user" ? "Caller" : m.agent === "pd" ? "SCPD" : "Fire Rescue"}
+              </div>
+              {m.content}
+            </div>
+          </div>
+        ))}
+        {session.interim && (
+          <div className="flex justify-end">
+            <div className="max-w-[80%] rounded-2xl rounded-br-md px-5 py-3 text-2xl bg-red-600/40 text-white italic">
+              {session.interim}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="px-10 py-4 border-t border-stone-800 flex gap-3">
+        <input
+          type="text"
+          value={hintText}
+          onChange={(e) => setHintText(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && sendHint()}
+          placeholder="Coach hint to send to the kid's phone (e.g. 'ask about breathing!')"
+          maxLength={200}
+          className="flex-1 rounded-lg bg-stone-900 border border-stone-700 px-4 py-2.5 text-stone-100 placeholder:text-stone-500 focus:outline-none focus:border-stone-500"
+        />
+        <button
+          onClick={sendHint}
+          disabled={!hintText.trim() || sending}
+          className="px-5 py-2.5 rounded-lg bg-amber-700 hover:bg-amber-600 border border-amber-600 text-white font-bold disabled:opacity-30"
+        >
+          👨‍🏫 Send Hint
+        </button>
+      </div>
     </div>
   );
 }

@@ -192,6 +192,8 @@ app.post("/api/chat", async (req, res) => {
     sessionId,
     callerName,
     difficulty = "medium",
+    persona = "default",
+    drills = [],
   } = req.body || {};
   if (!scenarioId) {
     return res.status(400).json({ error: "scenarioId is required" });
@@ -200,7 +202,7 @@ app.post("/api/chat", async (req, res) => {
 
   let systemPrompt;
   if (mode === "dispatcher") {
-    systemPrompt = callerSystemPrompt(scenarioId, { difficulty, callerName });
+    systemPrompt = callerSystemPrompt(scenarioId, { difficulty, callerName, persona, drills });
   } else if (agent === "pd") {
     systemPrompt = pdDispatcherSystemPrompt(scenarioId, pd, callerName);
   } else {
@@ -355,6 +357,36 @@ app.post("/api/admin/reset", (_req, res) => {
 
 app.get("/api/admin/state", (_req, res) => {
   res.json(getAllSessions());
+});
+
+// Coach hint — instructor posts a hint that the kid's call screen will display.
+const coachHints = new Map(); // sessionId -> { text, ts }
+
+app.post("/api/admin/session/:id/hint", (req, res) => {
+  const { id } = req.params;
+  if (!safeSessionId(id)) return res.status(400).json({ error: "invalid id" });
+  const text = (req.body?.text || "").toString().slice(0, 200).trim();
+  if (!text) return res.status(400).json({ error: "empty hint" });
+  coachHints.set(id, { text, ts: Date.now() });
+  res.json({ ok: true });
+});
+
+app.get("/api/session/:id/hint", (req, res) => {
+  const { id } = req.params;
+  if (!safeSessionId(id)) return res.status(400).json({ error: "invalid id" });
+  const hint = coachHints.get(id);
+  if (!hint) return res.json({ hint: null });
+  // Coach hints expire after 30s.
+  if (Date.now() - hint.ts > 30_000) {
+    coachHints.delete(id);
+    return res.json({ hint: null });
+  }
+  res.json({ hint });
+});
+
+app.delete("/api/session/:id/hint", (req, res) => {
+  coachHints.delete(req.params.id);
+  res.json({ ok: true });
 });
 
 // Voice recording upload + serve — raw webm blobs, keyed by session id.

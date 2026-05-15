@@ -1,11 +1,25 @@
 import React, { useMemo, useState } from "react";
 import { SCENARIOS, CATEGORIES, difficultyColor } from "../scenarios.js";
+import { getHistory, personalBest, getAchievements } from "../lib/storage.js";
+import { ACHIEVEMENTS } from "../lib/achievements.js";
 
 export default function HomeScreen({ onPick, supportWarning }) {
   const [category, setCategory] = useState("all");
   const [mode, setMode] = useState("caller");
   const [callerName, setCallerName] = useState("");
   const [difficulty, setDifficulty] = useState("medium");
+  const [persona, setPersona] = useState("default");
+  const [drills, setDrills] = useState([]);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const trimmedName = callerName.trim();
+  const history = useMemo(() => (trimmedName ? getHistory(trimmedName) : []), [trimmedName]);
+  const pb = useMemo(() => (trimmedName ? personalBest(trimmedName) : 0), [trimmedName, history]);
+  const achievements = useMemo(() => (trimmedName ? getAchievements(trimmedName) : []), [trimmedName, history]);
+
+  const toggleDrill = (id) => {
+    setDrills((cur) => (cur.includes(id) ? cur.filter((d) => d !== id) : [...cur, id]));
+  };
 
   const filtered = useMemo(() => {
     if (category === "all") return SCENARIOS;
@@ -107,22 +121,107 @@ export default function HomeScreen({ onPick, supportWarning }) {
         </div>
       )}
 
-      {!callerName.trim() && (
+      {!trimmedName && (
         <div className="w-full mb-3 rounded-lg border border-red-800/60 bg-red-950/30 text-red-200 text-sm p-3">
           Enter your first name above to start a call.
         </div>
       )}
 
+      {trimmedName && history.length > 0 && (
+        <div className="w-full mb-3 rounded-xl bg-stone-800/60 border border-stone-700 px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-stone-400 text-[10px] uppercase tracking-widest">
+                {trimmedName}'s record
+              </div>
+              <div className="text-stone-100 text-lg font-bold">
+                PB {pb} · {history.length} call{history.length === 1 ? "" : "s"}
+              </div>
+            </div>
+            <div className="flex gap-1 flex-wrap justify-end max-w-[60%]">
+              {achievements.slice(0, 8).map((id) => {
+                const a = ACHIEVEMENTS[id];
+                if (!a) return null;
+                return (
+                  <span key={id} title={`${a.title} — ${a.desc}`} className="text-xl">{a.icon}</span>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       <button
-        disabled={!callerName.trim()}
+        onClick={() => setShowAdvanced((v) => !v)}
+        className="w-full mb-3 text-stone-400 text-xs uppercase tracking-widest hover:text-stone-200"
+      >
+        {showAdvanced ? "▾ Hide advanced" : "▸ Advanced options"}
+      </button>
+
+      {showAdvanced && (
+        <div className="w-full mb-4 rounded-xl bg-stone-800/40 border border-stone-700 p-3 space-y-3">
+          <div>
+            <div className="text-stone-400 text-[10px] uppercase tracking-widest mb-1.5">
+              Caller persona (Dispatcher mode)
+            </div>
+            <div className="grid grid-cols-4 gap-1.5">
+              {[
+                { id: "default", label: "Default" },
+                { id: "child", label: "Child" },
+                { id: "adult", label: "Adult" },
+                { id: "elderly", label: "Elderly" },
+              ].map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => setPersona(p.id)}
+                  className={`rounded-lg p-1.5 border text-center text-xs font-semibold transition ${
+                    persona === p.id
+                      ? "bg-sky-700 border-sky-500 text-white"
+                      : "bg-stone-800 border-stone-700 text-stone-300 hover:bg-stone-700"
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="text-stone-400 text-[10px] uppercase tracking-widest mb-1.5">
+              Drills (Dispatcher mode only)
+            </div>
+            <div className="space-y-1.5">
+              {[
+                { id: "wrong_info", label: "🗺 Wrong address drill", desc: "Caller gives wrong address — kid must read it back to catch it." },
+                { id: "hangup", label: "📞 Hang-up drill", desc: "Caller hangs up mid-call to test callback skills." },
+              ].map((d) => (
+                <label key={d.id} className="flex items-start gap-2 rounded-lg bg-stone-800/70 border border-stone-700 px-2.5 py-2 cursor-pointer hover:bg-stone-800">
+                  <input
+                    type="checkbox"
+                    checked={drills.includes(d.id)}
+                    onChange={() => toggleDrill(d.id)}
+                    className="mt-0.5"
+                  />
+                  <div className="flex-1">
+                    <div className="text-stone-100 text-sm font-semibold">{d.label}</div>
+                    <div className="text-stone-400 text-[11px] leading-snug">{d.desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <button
+        disabled={!trimmedName}
         onClick={() => {
-          if (!callerName.trim()) return;
+          if (!trimmedName) return;
           const pool = category === "all"
             ? SCENARIOS
             : SCENARIOS.filter((s) => s.category === category);
           if (pool.length === 0) return;
           const pick = pool[Math.floor(Math.random() * pool.length)];
-          onPick(pick, mode, { callerName: callerName.trim(), difficulty });
+          onPick(pick, mode, { callerName: trimmedName, difficulty, persona, drills });
         }}
         className="w-full mb-4 rounded-2xl bg-gradient-to-br from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 border border-red-500 text-white p-4 flex items-center gap-4 shadow-lg active:scale-[0.99] transition disabled:opacity-40 disabled:cursor-not-allowed"
       >
@@ -156,10 +255,10 @@ export default function HomeScreen({ onPick, supportWarning }) {
         {filtered.map((s) => (
           <button
             key={s.id}
-            disabled={!callerName.trim()}
+            disabled={!trimmedName}
             onClick={() => {
-              if (!callerName.trim()) return;
-              onPick(s, mode, { callerName: callerName.trim(), difficulty });
+              if (!trimmedName) return;
+              onPick(s, mode, { callerName: trimmedName, difficulty, persona, drills });
             }}
             className="w-full text-left rounded-2xl bg-stone-800 hover:bg-stone-700 active:bg-stone-700 border border-stone-700 p-4 flex items-start gap-4 transition disabled:opacity-40 disabled:cursor-not-allowed"
           >

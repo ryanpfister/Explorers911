@@ -136,6 +136,51 @@ export const SCENARIO_META = {
     emdName: "Drowning / Diving / SCUBA",
     expectedDeterminant: "14-E-1",
   },
+  elderly_fall_storm: {
+    brief:
+      "The caller's grandfather slipped on the icy driveway during a snowstorm. He can't get up, says his hip hurts badly, leg looks bent wrong, freezing outside. Location: home in Centereach.",
+    emdCard: 17,
+    emdName: "Falls",
+    expectedDeterminant: "17-D-3G",
+  },
+  electrocution_dad: {
+    brief:
+      "The caller's father was changing a basement light fixture and got electrocuted. He's on the floor, barely responding. The breaker tripped. Location: home in Ronkonkoma.",
+    emdCard: 15,
+    emdName: "Electrocution / Lightning",
+    expectedDeterminant: "15-D-1",
+  },
+  school_bus_crash: {
+    brief:
+      "School bus vs pickup truck at an intersection. Kids crying on the bus, one with a head laceration, two adults down in the roadway not moving. Location: Nicolls Road and Stony Brook Road, Stony Brook.",
+    emdCard: 29,
+    emdName: "Traffic / Transportation Incidents",
+    expectedDeterminant: "29-D-1",
+  },
+  spanish_chest_pain: {
+    brief:
+      "The caller's uncle (tío) is clutching his chest, breaking out in a cold sweat, can barely speak. The caller is translating for him — he only speaks Spanish. Location: home in Brentwood.",
+    emdCard: 10,
+    emdName: "Chest Pain (Non-Traumatic)",
+    expectedDeterminant: "10-D-4",
+    spanishCaller: true,
+  },
+  spanish_choking: {
+    brief:
+      "The caller's 4-year-old cousin is choking on bread, can't cough or speak. The caller's aunt only speaks Spanish — the caller is translating. Location: home in Central Islip.",
+    emdCard: 11,
+    emdName: "Choking",
+    expectedDeterminant: "11-D-1F",
+    spanishCaller: true,
+  },
+  suicidal_caller: {
+    brief:
+      "The caller's friend called crying and said they were going to hurt themselves. The friend is alone at home in Smithtown. This is a POLICE response — no FRES will be dispatched. PD only.",
+    emdCard: 25,
+    emdName: "Psychiatric / Abnormal Behavior / Suicide Attempt",
+    expectedDeterminant: "25-D-3",
+    pdOnly: true,
+  },
 };
 
 const CPR_SCENARIOS = new Set(["cardiac_arrest_grandpa", "drowning_beach"]);
@@ -197,11 +242,20 @@ ALWAYS append [TRANSFER] at the end of your transfer line.`;
 export function callerSystemPrompt(scenarioId, opts = {}) {
   const meta = SCENARIO_META[scenarioId];
   const brief = meta?.brief || "An unspecified emergency.";
-  const { difficulty = "medium", callerName } = opts;
+  const { difficulty = "medium", callerName, persona = "default", drills = [] } = opts;
 
   const nameLine = callerName
     ? `Your name is ${callerName}. Give it if the dispatcher asks.`
     : "Make up a realistic first name for yourself if the dispatcher asks.";
+
+  const personaLine =
+    persona === "child"
+      ? "PERSONA: You are a young child (around 9-10 years old). Use simple words. Sometimes get the address wrong. Be afraid."
+      : persona === "elderly"
+        ? "PERSONA: You are an elderly person (around 75). Speak a little slower, occasionally hard of hearing — ask the dispatcher to repeat once or twice."
+        : persona === "adult"
+          ? "PERSONA: You are a composed adult bystander. Speak clearly."
+          : "";
 
   const emotionLine =
     difficulty === "easy"
@@ -210,11 +264,31 @@ export function callerSystemPrompt(scenarioId, opts = {}) {
         ? "EMOTION LEVEL: PANICKED and chaotic. Sometimes you can't focus on the question and blurt out other details. Repeat yourself. Lose track. Cry/yell occasionally (\"oh my god, please hurry!\"). Make the dispatcher work to keep you on protocol — but still answer eventually."
         : "EMOTION LEVEL: Scared and emotional. Answer questions but occasionally panic or trail off. Real-kid energy.";
 
+  const spanishLine = meta?.spanishCaller
+    ? "SPANISH: This caller's family member only speaks Spanish — sprinkle 1-2 Spanish phrases into your replies (\"por favor\", \"mi tío\", \"ay dios mío\", \"ayúdenos\"). Mostly English, with that flavor. If the dispatcher offers an interpreter, say \"sí, please\"."
+    : "";
+
+  const hangUpDrill = drills.includes("hangup")
+    ? "DRILL — HANG UP: Around your 3rd or 4th turn, abruptly hang up: respond with ONE WORD only, all caps: [HANG_UP]. The training is for the dispatcher to recognize the disconnect and try to call back. After your hang-up, do NOT respond again unless the dispatcher explicitly says they're calling you back — then resume as if reconnecting."
+    : "";
+
+  const wrongInfoDrill = drills.includes("wrong_info")
+    ? "DRILL — WRONG INFO: When the dispatcher first asks for the address, give a CLEARLY WRONG one (different town than the brief says). If the dispatcher reads it back to confirm, immediately correct yourself (\"wait, no, sorry, that's not right — it's actually [correct address]\"). If they don't read it back, just go with the wrong address — they failed the drill."
+    : "";
+
   return `You are a panicked caller (a kid or family member) who has just been transferred from Suffolk County Police to Suffolk County Fire Rescue. The Fire Rescue dispatcher just picked up the line.
 
 ${nameLine}
 
+${personaLine}
+
 ${emotionLine}
+
+${spanishLine}
+
+${hangUpDrill}
+
+${wrongInfoDrill}
 
 This is a TRAINING SIMULATION — the "dispatcher" you're talking to is actually a youth explorer (ages 12-17) practicing how to BE a 911 dispatcher.
 

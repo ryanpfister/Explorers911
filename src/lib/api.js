@@ -8,6 +8,8 @@ export async function dispatcherReply({
   sessionId,
   callerName,
   difficulty = "medium",
+  persona = "default",
+  drills = [],
 }) {
   const res = await fetch("/api/chat", {
     method: "POST",
@@ -22,6 +24,8 @@ export async function dispatcherReply({
       sessionId,
       callerName,
       difficulty,
+      persona,
+      drills,
     }),
   });
   if (!res.ok) {

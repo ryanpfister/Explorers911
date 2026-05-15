@@ -2,13 +2,16 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useSpeechRecognition } from "../hooks/useSpeechRecognition.js";
 import { useSpeechSynthesis } from "../hooks/useSpeechSynthesis.js";
 import { dispatcherReply } from "../lib/api.js";
-import { playEndBeep, playTypingLoop, playHoldTone, playConnectChirp } from "../lib/sound.js";
+import { playEndBeep, playTypingLoop, playHoldTone, playConnectChirp, startAmbience, startCprMetronome } from "../lib/sound.js";
 import { reportAdmin, getSessionId } from "../lib/admin.js";
 
 const END_TAG = "[END_CALL]";
 const TRANSFER_TAG = "[TRANSFER]";
+const HANGUP_TAG = "[HANG_UP]";
 const DISPATCH_TAG_RE = /\[DISPATCH:[^\]]+\]/g;
 const DISPATCH_RE = /\b(stand by|hold on|dispatching|dispatch|en route|on (?:the|their) way|responding|heading your way|units (?:are|have been)|sending .+(?:fire|ems|ambulance|medic|rescue))\b/i;
+const CPR_RE = /\b(compress|push.*down.*chest|cpr|chest compress|stayin'? alive)\b/i;
+const CPR_STOP_RE = /\b(stop compress|stop cpr|crews? (?:are )?here|arriving now|on scene|pulling up)\b/i;
 
 function formatTimer(seconds) {
   const m = Math.floor(seconds / 60).toString().padStart(2, "0");
@@ -24,7 +27,7 @@ function PhoneIcon({ className = "w-8 h-8" }) {
   );
 }
 
-export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", callerName, difficulty = "medium", onEnd }) {
+export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", callerName, difficulty = "medium", persona = "default", drills = [], onEnd }) {
   const [messages, setMessages] = useState([]);
   const [thinking, setThinking] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -32,6 +35,10 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
   const [endedReason, setEndedReason] = useState(null);
   const [agent, setAgent] = useState(mode === "dispatcher" ? "caller" : "pd");
   const [showTranscript, setShowTranscript] = useState(false);
+  const [coachHint, setCoachHint] = useState(null);
+  const ambienceStopRef = useRef(null);
+  const cprStopRef = useRef(null);
+  const [cprActive, setCprActive] = useState(false);
   const endedRef = useRef(false);
   const recorderRef = useRef(null);
   const recorderChunksRef = useRef([]);
@@ -68,14 +75,20 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
           sessionId: getSessionId(),
           callerName,
           difficulty,
+          persona,
+          drills,
         });
         const isFinal = reply.includes(END_TAG);
         const isTransfer = reply.includes(TRANSFER_TAG);
+        const isHangup = reply.includes(HANGUP_TAG);
         let cleaned = reply
           .replace(END_TAG, "")
           .replace(TRANSFER_TAG, "")
+          .replace(HANGUP_TAG, "")
           .replace(DISPATCH_TAG_RE, "")
           .trim();
+        // For a hang-up, show silence rather than text.
+        if (isHangup && !cleaned) cleaned = "[click… dial tone…]";
 
         const stampedAgent = mode === "dispatcher" ? "caller" : agentRef.current;
         const next = [
@@ -88,6 +101,18 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
         if (mode === "caller" && agentRef.current === "fres" && DISPATCH_RE.test(cleaned)) {
           playHoldTone();
           await new Promise((r) => setTimeout(r, 950));
+        }
+
+        // CPR metronome: when the dispatcher tells the caller to do compressions,
+        // start a 100bpm beat the kid can compress to.
+        if (mode === "caller" && CPR_RE.test(cleaned) && !cprStopRef.current) {
+          cprStopRef.current = startCprMetronome(100);
+          setCprActive(true);
+        }
+        if (cprStopRef.current && CPR_STOP_RE.test(cleaned)) {
+          cprStopRef.current();
+          cprStopRef.current = null;
+          setCprActive(false);
         }
 
         reportAdmin({ callerStatus: "speaking-dispatcher", messages: next });
@@ -104,13 +129,11 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
               }, 1500);
               return;
             }
-            if (isFinal && !endedRef.current) {
+            if ((isFinal || isHangup) && !endedRef.current) {
               endedRef.current = true;
-              setEndedReason("dispatched");
+              setEndedReason(isHangup ? "hangup" : "dispatched");
               playEndBeep();
               reportAdmin({ status: "ended", endedAt: Date.now(), callerStatus: null });
-              // Wait for the recording to finish uploading BEFORE transitioning to feedback,
-              // otherwise the in-flight POST gets aborted on unmount and admin never sees the recording.
               stopAndUploadRecording().finally(() => {
                 setTimeout(() => onEnd(messagesRef.current), 600);
               });
@@ -240,6 +263,8 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
     });
     stt.start();
     startRecording();
+    // Subtle ambient noise underneath — calmer feel.
+    ambienceStopRef.current = startAmbience();
     if (mode === "caller") {
       sendToAI([]);
     } else {
@@ -247,11 +272,12 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
     }
     return () => {
       stt.stop();
-      // Best-effort: stop the recorder if user navigates away without End Call.
       if (recorderRef.current && recorderRef.current.state !== "inactive") {
         try { recorderRef.current.stop(); } catch {}
       }
       try { recorderStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch {}
+      try { ambienceStopRef.current?.(); } catch {}
+      try { cprStopRef.current?.(); } catch {}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -272,6 +298,33 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
   useEffect(() => {
     reportAdmin({ interim: stt.interim });
   }, [stt.interim]);
+
+  // Poll for instructor coach hints.
+  useEffect(() => {
+    const sid = getSessionId();
+    if (!sid) return;
+    let lastTs = 0;
+    let stopped = false;
+    let timer = null;
+    async function poll() {
+      if (stopped || endedRef.current) return;
+      try {
+        const r = await fetch(`/api/session/${encodeURIComponent(sid)}/hint`);
+        const data = await r.json();
+        if (data?.hint && data.hint.ts !== lastTs) {
+          lastTs = data.hint.ts;
+          setCoachHint(data.hint.text);
+          await fetch(`/api/session/${encodeURIComponent(sid)}/hint`, { method: "DELETE" });
+          setTimeout(() => setCoachHint(null), 8000);
+        }
+      } catch {
+        // ignore
+      }
+      timer = setTimeout(poll, 2500);
+    }
+    poll();
+    return () => { stopped = true; if (timer) clearTimeout(timer); };
+  }, []);
 
   useEffect(() => {
     const t = setInterval(() => setElapsed((e) => e + 1), 1000);
@@ -357,6 +410,21 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
 
   return (
     <div className="min-h-full flex flex-col max-w-md mx-auto relative bg-gradient-to-b from-stone-900 via-stone-950 to-black text-stone-100">
+      {coachHint && (
+        <div className="bg-amber-700 text-white px-4 py-2 text-sm font-bold text-center flex items-center justify-center gap-2 animate-pulse">
+          <span>👨‍🏫</span>
+          <span className="flex-1">{coachHint}</span>
+          <button onClick={() => setCoachHint(null)} className="text-white/80 hover:text-white">✕</button>
+        </div>
+      )}
+
+      {cprActive && (
+        <div className="bg-red-700 text-white px-4 py-1.5 text-sm font-bold text-center flex items-center justify-center gap-2">
+          <span className="animate-pulse">🫀</span>
+          <span>CPR — push to the beat (100bpm)</span>
+        </div>
+      )}
+
       {/* Status bar */}
       <div className="px-5 pt-5 pb-2 flex items-center justify-between text-[11px] font-mono text-stone-400">
         <span className="inline-flex items-center gap-1.5">

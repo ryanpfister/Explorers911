@@ -57,6 +57,8 @@ export default function App() {
   const [mode, setMode] = useState("caller");
   const [callerName, setCallerName] = useState("");
   const [difficulty, setDifficulty] = useState("medium");
+  const [persona, setPersona] = useState("default");
+  const [drills, setDrills] = useState([]);
   const sessionIdRef = useRef(null);
 
   const sttOk = speechRecognitionSupported;
@@ -89,6 +91,8 @@ export default function App() {
     setMode(pickedMode);
     if (opts.callerName !== undefined) setCallerName(opts.callerName);
     if (opts.difficulty !== undefined) setDifficulty(opts.difficulty);
+    if (opts.persona !== undefined) setPersona(opts.persona);
+    if (opts.drills !== undefined) setDrills(opts.drills);
     setDispatcher(generateDispatcherPersona());
     setPd(generatePdPersona());
     setScenario(s);
@@ -147,6 +151,8 @@ export default function App() {
           mode={mode}
           callerName={callerName}
           difficulty={difficulty}
+          persona={persona}
+          drills={drills}
           onEnd={handleCallEnd}
         />
       )}
@@ -156,6 +162,8 @@ export default function App() {
           messages={transcript}
           sessionId={sessionIdRef.current}
           mode={mode}
+          callerName={callerName}
+          difficulty={difficulty}
           onRestart={handleRestart}
         />
       )}

@@ -8,6 +8,7 @@ export const CATEGORIES = [
   { id: "fire", label: "Fire / Burns" },
   { id: "traffic", label: "Traffic" },
   { id: "water", label: "Water" },
+  { id: "police", label: "Police" },
 ];
 
 export const SCENARIOS = [
@@ -283,6 +284,94 @@ export const SCENARIOS = [
       "Someone went under at Robert Moses Beach and a lifeguard just dragged them onto the sand. They're not breathing and not moving — the lifeguard is starting CPR.",
     location: "Robert Moses State Park",
     emoji: "🌊",
+  },
+  // ─── Additional scenarios ─────────────────────────────────────────────
+  {
+    id: "elderly_fall_storm",
+    title: "Elderly Fall in Snowstorm",
+    category: "medical",
+    emdCard: 17,
+    emdName: "Falls",
+    expectedDeterminant: "17-D-3G",
+    expectedName: "Long Fall / Dangerous Body Area — Elderly",
+    difficulty: "hard",
+    brief:
+      "Your grandfather slipped on the icy driveway during a snowstorm. He can't get up, says his hip hurts badly, and you can see his leg looks bent wrong. It's freezing outside.",
+    location: "Centereach",
+    emoji: "🥶",
+  },
+  {
+    id: "electrocution_dad",
+    title: "Electrocution in Basement",
+    category: "medical",
+    emdCard: 15,
+    emdName: "Electrocution / Lightning",
+    expectedDeterminant: "15-D-1",
+    expectedName: "Not Alert",
+    difficulty: "hard",
+    brief:
+      "Your dad was changing a basement light fixture and got electrocuted. He's on the floor, not really responding. The breaker tripped. You're at home in Ronkonkoma.",
+    location: "Ronkonkoma",
+    emoji: "⚡",
+  },
+  {
+    id: "school_bus_crash",
+    title: "School Bus Crash",
+    category: "traffic",
+    emdCard: 29,
+    emdName: "Traffic / Transportation Incidents",
+    expectedDeterminant: "29-D-1",
+    expectedName: "Multiple Patients",
+    difficulty: "hard",
+    brief:
+      "A school bus and a pickup truck collided at the intersection. Kids are crying inside the bus, one is bleeding from the head, two adults on the road aren't moving. You're at Nicolls Road and Stony Brook Road, Stony Brook.",
+    location: "Stony Brook",
+    emoji: "🚌",
+  },
+  {
+    id: "spanish_chest_pain",
+    title: "Chest Pain — Spanish Caller",
+    category: "medical",
+    emdCard: 10,
+    emdName: "Chest Pain (Non-Traumatic)",
+    expectedDeterminant: "10-D-4",
+    expectedName: "Clammy + Heart Problems",
+    difficulty: "hard",
+    brief:
+      "Your tío (uncle) is clutching his chest, sweating cold, can barely speak. He doesn't speak English — you're translating. You're at his house in Brentwood.",
+    location: "Brentwood",
+    emoji: "🇪🇸",
+    spanishCaller: true,
+  },
+  {
+    id: "spanish_choking",
+    title: "Niño Atorado (Choking) — Spanish",
+    category: "medical",
+    emdCard: 11,
+    emdName: "Choking",
+    expectedDeterminant: "11-D-1F",
+    expectedName: "Complete Obstruction — Food",
+    difficulty: "hard",
+    brief:
+      "Tu primito (little cousin), 4 años, está atorado con un pedazo de pan. No puede toser ni hablar. Está en casa de tu abuela en Central Islip. Mom only speaks Spanish — you're helping.",
+    location: "Central Islip",
+    emoji: "🇪🇸",
+    spanishCaller: true,
+  },
+  {
+    id: "suicidal_caller",
+    title: "Suicidal Caller (PD Only)",
+    category: "police",
+    emdCard: 25,
+    emdName: "Psychiatric / Abnormal Behavior / Suicide Attempt",
+    expectedDeterminant: "25-D-3",
+    expectedName: "High Risk — Threatening Suicide",
+    difficulty: "hard",
+    brief:
+      "A friend called you crying and said they're going to hurt themselves. They're alone at home in Smithtown. They sound serious — this is a police-only call (FRES will not respond).",
+    location: "Smithtown",
+    emoji: "🆘",
+    pdOnly: true,
   },
 ];
 

@@ -1,5 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { fetchFeedback } from "../lib/api.js";
+import { addHistoryEntry, getHistory, addAchievement } from "../lib/storage.js";
+import { evaluateAchievements, ACHIEVEMENTS } from "../lib/achievements.js";
 
 function parseFeedback(text) {
   const out = {
@@ -52,10 +54,11 @@ function parseFeedback(text) {
   return out;
 }
 
-export default function FeedbackScreen({ scenario, messages, sessionId, mode = "caller", onRestart }) {
+export default function FeedbackScreen({ scenario, messages, sessionId, mode = "caller", callerName, difficulty, onRestart }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [raw, setRaw] = useState("");
+  const [newAchievements, setNewAchievements] = useState([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -85,6 +88,34 @@ export default function FeedbackScreen({ scenario, messages, sessionId, mode = "
 
   const parsed = parseFeedback(raw);
 
+  // Persist this call to local history + unlock achievements once feedback is parsed.
+  useEffect(() => {
+    if (loading || error || !raw || !callerName?.trim() || parsed.score === null) return;
+    const name = callerName.trim();
+    const history = getHistory(name);
+    const unlocked = evaluateAchievements({
+      score: parsed.score,
+      emdCode: parsed.emdCode,
+      expectedDeterminant: scenario.expectedDeterminant,
+      mode,
+      difficulty,
+      scenario,
+      history,
+    });
+    addHistoryEntry(name, {
+      scenarioId: scenario.id,
+      title: scenario.title,
+      category: scenario.category,
+      score: parsed.score,
+      emdCode: parsed.emdCode,
+      mode,
+      difficulty,
+    });
+    const newly = unlocked.filter((id) => addAchievement(name, id));
+    if (newly.length) setNewAchievements(newly);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, error, raw, callerName]);
+
   return (
     <div className="min-h-full flex flex-col px-5 py-8 max-w-md mx-auto">
       <div className="text-center mb-6">
@@ -101,6 +132,29 @@ export default function FeedbackScreen({ scenario, messages, sessionId, mode = "
 
       {!loading && !error && parsed.score !== null && (
         <ScoreCard score={parsed.score} />
+      )}
+
+      {newAchievements.length > 0 && (
+        <div className="rounded-2xl bg-gradient-to-br from-amber-700 to-amber-900 border border-amber-500 p-4 mb-4">
+          <div className="text-amber-100 text-[10px] uppercase tracking-widest font-bold mb-2">
+            🏅 New Achievements Unlocked
+          </div>
+          <div className="space-y-2">
+            {newAchievements.map((id) => {
+              const a = ACHIEVEMENTS[id];
+              if (!a) return null;
+              return (
+                <div key={id} className="flex items-center gap-3 bg-amber-950/40 rounded-lg px-3 py-2">
+                  <div className="text-2xl">{a.icon}</div>
+                  <div>
+                    <div className="text-white font-bold leading-tight">{a.title}</div>
+                    <div className="text-amber-100 text-xs leading-snug">{a.desc}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       )}
 
       {loading && (

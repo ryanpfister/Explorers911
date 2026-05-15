@@ -109,3 +109,50 @@ export function playConnectChirp() {
   tone({ freq: 1200, duration: 0.07, when: 0, gain: 0.09 });
   tone({ freq: 1800, duration: 0.1, when: 0.09, gain: 0.09 });
 }
+
+// Very low call-center hum playing under the call. Returns a stop() function.
+export function startAmbience() {
+  const ac = audioCtx();
+  if (!ac) return () => {};
+  const buf = ac.createBuffer(1, ac.sampleRate * 4, ac.sampleRate);
+  const data = buf.getChannelData(0);
+  // Pink-ish noise floor.
+  let last = 0;
+  for (let i = 0; i < data.length; i++) {
+    const white = Math.random() * 2 - 1;
+    last = 0.97 * last + 0.03 * white;
+    data[i] = last * 0.5;
+  }
+  const src = ac.createBufferSource();
+  src.buffer = buf;
+  src.loop = true;
+  const filter = ac.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.value = 800;
+  const g = ac.createGain();
+  g.gain.value = 0.025; // very quiet
+  src.connect(filter);
+  filter.connect(g);
+  g.connect(ac.destination);
+  try { src.start(); } catch { return () => {}; }
+  return () => {
+    try { src.stop(); } catch {}
+    try { g.disconnect(); } catch {}
+  };
+}
+
+// 100 BPM CPR metronome. Returns a stop() function.
+export function startCprMetronome(bpm = 100) {
+  const ac = audioCtx();
+  if (!ac) return () => {};
+  let stopped = false;
+  const intervalMs = (60 / bpm) * 1000;
+
+  function tick() {
+    if (stopped) return;
+    tone({ freq: 880, duration: 0.06, gain: 0.15 });
+    setTimeout(tick, intervalMs);
+  }
+  tick();
+  return () => { stopped = true; };
+}
