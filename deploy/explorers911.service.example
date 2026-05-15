@@ -1,14 +1,15 @@
 [Unit]
-Description=911 Training Simulator (Node/Express)
+Description=911 Training Simulator (Node/Express + Claude Agent SDK)
 After=network.target
 
 [Service]
 Type=simple
 User=explorers911
-WorkingDirectory=/opt/explorers911
-EnvironmentFile=/opt/explorers911/.env
+WorkingDirectory=/opt/explorers911/app
+EnvironmentFile=/opt/explorers911/app/.env
 Environment=NODE_ENV=production
 Environment=PORT=8787
+Environment=HOME=/opt/explorers911
 ExecStart=/usr/bin/node server/index.js
 Restart=on-failure
 RestartSec=2

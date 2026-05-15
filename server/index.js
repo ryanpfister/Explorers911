@@ -3,24 +3,14 @@ import express from "express";
 import compression from "compression";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import Anthropic from "@anthropic-ai/sdk";
+import { query } from "@anthropic-ai/claude-agent-sdk";
 import { dispatcherSystemPrompt, feedbackPrompt } from "./prompts.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 
 const PORT = parseInt(process.env.PORT || "8787", 10);
-const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6";
-
-if (!process.env.ANTHROPIC_API_KEY) {
-  console.warn(
-    "[warn] ANTHROPIC_API_KEY is not set. /api/chat and /api/feedback will fail until it's configured."
-  );
-}
-
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+const MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-4-5";
 
 const app = express();
 app.use(compression());
@@ -40,37 +30,62 @@ function sanitizeMessages(messages) {
     .slice(-40);
 }
 
+function formatHistoryAsPrompt(history) {
+  if (history.length === 0) {
+    return "(The caller has just connected. Open the call now with your first line.)";
+  }
+  const lines = history.map((m) =>
+    m.role === "user"
+      ? `CALLER: ${m.content}`
+      : `YOU (dispatcher, earlier line): ${m.content}`
+  );
+  lines.push(
+    "",
+    "Respond with your next dispatcher line ONLY (1-2 short sentences, no prefix, no quotes)."
+  );
+  return lines.join("\n");
+}
+
+async function runQuery({ systemPrompt, userPrompt, maxTokens }) {
+  const result = query({
+    prompt: userPrompt,
+    options: {
+      model: MODEL,
+      systemPrompt,
+      allowedTools: [],
+      permissionMode: "bypassPermissions",
+      settingSources: [],
+      maxTurns: 1,
+      ...(maxTokens ? { maxThinkingTokens: 0 } : {}),
+    },
+  });
+
+  let text = "";
+  for await (const msg of result) {
+    if (msg.type === "assistant" && msg.message?.content) {
+      for (const block of msg.message.content) {
+        if (block.type === "text") text += block.text;
+      }
+    }
+    if (msg.type === "result" && msg.subtype === "error_during_execution") {
+      throw new Error(msg.error || "Claude Agent SDK error");
+    }
+  }
+  return text.trim();
+}
+
 app.post("/api/chat", async (req, res) => {
   const { scenarioId, messages } = req.body || {};
   if (!scenarioId) {
     return res.status(400).json({ error: "scenarioId is required" });
   }
   const history = sanitizeMessages(messages);
-  // If the conversation hasn't started yet, give Claude a nudge to open the call.
-  const apiMessages =
-    history.length === 0
-      ? [{ role: "user", content: "(caller has just connected)" }]
-      : history;
 
   try {
-    const response = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 200,
-      system: [
-        {
-          type: "text",
-          text: dispatcherSystemPrompt(scenarioId),
-          cache_control: { type: "ephemeral" },
-        },
-      ],
-      messages: apiMessages,
+    const reply = await runQuery({
+      systemPrompt: dispatcherSystemPrompt(scenarioId),
+      userPrompt: formatHistoryAsPrompt(history),
     });
-    const reply =
-      response.content
-        ?.filter((block) => block.type === "text")
-        .map((block) => block.text)
-        .join("")
-        .trim() || "";
     res.json({ reply });
   } catch (err) {
     console.error("[chat] error:", err);
@@ -94,25 +109,15 @@ app.post("/api/feedback", async (req, res) => {
   }
 
   const transcript = history
-    .map(
-      (m) => `${m.role === "user" ? "Caller" : "Dispatcher"}: ${m.content}`
-    )
+    .map((m) => `${m.role === "user" ? "Caller" : "Dispatcher"}: ${m.content}`)
     .join("\n");
 
   try {
-    const response = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 600,
-      messages: [
-        { role: "user", content: feedbackPrompt(scenarioId, transcript) },
-      ],
+    const feedback = await runQuery({
+      systemPrompt:
+        "You are a friendly coach reviewing a 911 training call for a kid (ages 12-17). Follow the user's formatting instructions exactly. Stay encouraging and specific.",
+      userPrompt: feedbackPrompt(scenarioId, transcript),
     });
-    const feedback =
-      response.content
-        ?.filter((block) => block.type === "text")
-        .map((block) => block.text)
-        .join("")
-        .trim() || "";
     res.json({ feedback });
   } catch (err) {
     console.error("[feedback] error:", err);
@@ -126,7 +131,6 @@ app.get("/api/health", (_req, res) => {
   res.json({ ok: true, model: MODEL });
 });
 
-// Production: serve the built frontend.
 if (process.env.NODE_ENV === "production") {
   const distDir = path.join(ROOT, "dist");
   app.use(express.static(distDir));
