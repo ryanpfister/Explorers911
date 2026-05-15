@@ -57,6 +57,27 @@ export default function HomeScreen({ onPick, supportWarning }) {
         </div>
       )}
 
+      <button
+        onClick={() => {
+          const pool = category === "all"
+            ? SCENARIOS
+            : SCENARIOS.filter((s) => s.category === category);
+          if (pool.length === 0) return;
+          const pick = pool[Math.floor(Math.random() * pool.length)];
+          onPick(pick, mode);
+        }}
+        className="w-full mb-4 rounded-2xl bg-gradient-to-br from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 border border-red-500 text-white p-4 flex items-center gap-4 shadow-lg active:scale-[0.99] transition"
+      >
+        <div className="text-4xl" aria-hidden>🎲</div>
+        <div className="flex-1 text-left">
+          <div className="text-lg font-bold leading-tight">Try a Random Call</div>
+          <div className="text-[12px] opacity-90 leading-snug">
+            Pick for me — surprise scenario from the {category === "all" ? "full list" : "this category"}.
+          </div>
+        </div>
+        <div className="text-2xl">›</div>
+      </button>
+
       <div className="w-full mb-4 flex gap-2 overflow-x-auto -mx-1 px-1 pb-1">
         {CATEGORIES.map((c) => (
           <button
