@@ -166,7 +166,59 @@ function playAlertTones() {
   return 3300;
 }
 
+// Curated "highlight reel" — pick the most interesting calls to share with the group.
+function pickHighlights(sessions) {
+  const out = [];
+  const scored = sessions.filter((s) => typeof s.score === "number");
+  const seen = new Set();
+  const take = (s, h) => {
+    if (!s || seen.has(s.id)) return;
+    seen.add(s.id);
+    out.push({ ...h, session: s });
+  };
+
+  // 🏆 Best score
+  if (scored.length) {
+    const best = scored.reduce((a, b) => (b.score > a.score ? b : a));
+    take(best, { id: "best", icon: "🏆", label: "Best score", detail: `${best.callerName || "?"} — ${best.score}/100` });
+  }
+
+  // 📚 Coaching moment (lowest score, distinct from best)
+  if (scored.length >= 2) {
+    const sorted = [...scored].sort((a, b) => a.score - b.score);
+    take(sorted[0], { id: "coaching", icon: "📚", label: "Coaching moment", detail: `${sorted[0].callerName || "?"} — ${sorted[0].score}/100` });
+  }
+
+  // ⚡ Fastest dispatch (time from start to [DISPATCH:...])
+  const withDispatch = sessions.filter((s) => s.dispatch?.timestamp && s.startedAt);
+  if (withDispatch.length) {
+    const fastest = withDispatch.reduce((a, b) =>
+      (b.dispatch.timestamp - b.startedAt) < (a.dispatch.timestamp - a.startedAt) ? b : a
+    );
+    const secs = Math.round((fastest.dispatch.timestamp - fastest.startedAt) / 1000);
+    take(fastest, { id: "fastest", icon: "⚡", label: "Fastest dispatch", detail: `${fastest.callerName || "?"} — ${secs}s to dispatch` });
+  }
+
+  // 🔥 Hard mode survivor
+  const hardWin = sessions.find((s) => s.difficulty === "hard" && typeof s.score === "number" && s.score >= 70);
+  take(hardWin, { id: "hard", icon: "🔥", label: "Hard mode survivor", detail: `${hardWin?.callerName || "?"} held it together` });
+
+  // 🌎 Bilingual call
+  const spanish = sessions.find((s) => {
+    const sc = s.scenarioId ? scenarioById(s.scenarioId) : null;
+    return sc?.spanishCaller;
+  });
+  take(spanish, { id: "spanish", icon: "🌎", label: "Bilingual call", detail: `${spanish?.callerName || "?"} — Spanish caller` });
+
+  // 🎙️ Most chaotic — longest call by message count
+  const byMessageCount = [...sessions].sort((a, b) => (b.messages?.length || 0) - (a.messages?.length || 0));
+  take(byMessageCount[0], { id: "longest", icon: "🎙️", label: "Most back-and-forth", detail: `${byMessageCount[0]?.callerName || "?"} — ${byMessageCount[0]?.messages?.length || 0} exchanges` });
+
+  return out;
+}
+
 export default function ReviewScreen({ sessions, onClose }) {
+  const [mode, setMode] = useState("overview"); // "overview" | "sequence"
   // Flatten into a sequence of (sessionIdx, segment) pairs.
   const flat = useMemo(() => {
     const arr = [];
@@ -200,6 +252,7 @@ export default function ReviewScreen({ sessions, onClose }) {
       try { window.speechSynthesis?.cancel(); } catch {}
       return;
     }
+    if (mode !== "sequence") return;
     if (idx >= flat.length) return;
     let cancelled = false;
     let timer = null;
@@ -275,7 +328,7 @@ export default function ReviewScreen({ sessions, onClose }) {
       try { if (audioEl) audioEl.pause(); } catch {}
     };
     return () => cancelRef.current();
-  }, [idx, playing, flat]);
+  }, [idx, playing, flat, mode]);
 
   const current = flat[idx];
   const finished = idx >= flat.length;
@@ -311,6 +364,17 @@ export default function ReviewScreen({ sessions, onClose }) {
     );
   }
 
+  if (mode === "overview") {
+    return (
+      <ReviewOverview
+        sessions={sessions}
+        highlights={pickHighlights(sessions)}
+        onPlayAll={() => setMode("sequence")}
+        onClose={handleClose}
+      />
+    );
+  }
+
   return (
     <div className="fixed inset-0 bg-stone-950 z-50 flex flex-col text-stone-100">
       {/* Header */}
@@ -325,6 +389,7 @@ export default function ReviewScreen({ sessions, onClose }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={() => setMode("overview")} className="px-3 py-2 rounded-lg bg-stone-800 hover:bg-stone-700 border border-stone-700 text-sm">▦ Overview</button>
           <button onClick={prevSession} className="px-3 py-2 rounded-lg bg-stone-800 hover:bg-stone-700 border border-stone-700 text-sm">‹ Prev call</button>
           <button onClick={() => setPlaying((p) => !p)} className={`px-4 py-2 rounded-lg border font-bold ${playing ? "bg-amber-700 border-amber-600 hover:bg-amber-600" : "bg-emerald-700 border-emerald-600 hover:bg-emerald-600"}`}>
             {playing ? "⏸ Pause" : "▶ Resume"}
@@ -471,6 +536,135 @@ function ReviewStage({ item }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function ReviewOverview({ sessions, highlights, onPlayAll, onClose }) {
+  const stats = useMemo(() => {
+    const scored = sessions.filter((s) => typeof s.score === "number");
+    const avg = scored.length ? Math.round(scored.reduce((a, b) => a + b.score, 0) / scored.length) : null;
+    const recs = sessions.filter((s) => s.hasRecording).length;
+    const totalMs = sessions.reduce((acc, s) => acc + Math.max(0, (s.endedAt || 0) - (s.startedAt || 0)), 0);
+    const totalMin = Math.round(totalMs / 60000);
+    return { count: sessions.length, scored: scored.length, avg, recs, totalMin };
+  }, [sessions]);
+
+  return (
+    <div className="fixed inset-0 bg-stone-950 z-50 flex flex-col text-stone-100">
+      <div className="px-10 py-5 border-b border-stone-800 flex items-center justify-between">
+        <div className="flex items-baseline gap-4">
+          <div className="text-red-500 text-4xl font-black tracking-tight">911</div>
+          <div>
+            <div className="text-stone-100 text-2xl font-bold leading-tight">Session Review · Overview</div>
+            <div className="text-stone-400 text-sm">Pick highlights to share with the class.</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={onPlayAll} className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 border border-emerald-600 font-bold">
+            ▶ Play All Sequentially
+          </button>
+          <button onClick={onClose} className="px-4 py-2 rounded-lg bg-red-700 hover:bg-red-600 border border-red-600 font-bold">
+            Exit
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-10 py-6">
+        {/* Stats row */}
+        <div className="grid grid-cols-4 gap-4 mb-8">
+          <StatCard label="Calls" value={stats.count} />
+          <StatCard label="Class Avg" value={stats.avg ?? "—"} color="text-amber-300" />
+          <StatCard label="With Recording" value={`${stats.recs}/${stats.count}`} color="text-emerald-300" />
+          <StatCard label="Total Time" value={`${stats.totalMin}m`} color="text-sky-300" />
+        </div>
+
+        <div className="text-stone-300 text-lg font-bold mb-3 uppercase tracking-wider">
+          Suggested Highlights
+        </div>
+        {highlights.length === 0 ? (
+          <div className="text-stone-500 py-12 text-center">
+            Not enough scored calls yet to generate highlights.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {highlights.map((h) => (
+              <HighlightCard key={h.id} highlight={h} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value, color = "text-stone-100" }) {
+  return (
+    <div className="rounded-2xl bg-stone-900 border border-stone-800 p-4">
+      <div className="text-stone-500 text-[10px] uppercase tracking-widest">{label}</div>
+      <div className={`${color} text-4xl font-black tabular-nums leading-tight mt-1`}>{value}</div>
+    </div>
+  );
+}
+
+function HighlightCard({ highlight }) {
+  const audioRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const s = highlight.session;
+  const scenario = s.scenarioId ? scenarioById(s.scenarioId) : null;
+  const hasRec = s.hasRecording;
+
+  const togglePlay = () => {
+    if (!hasRec) return;
+    if (!audioRef.current) {
+      audioRef.current = new Audio(`/api/recording/${encodeURIComponent(s.id)}`);
+      audioRef.current.onended = () => setPlaying(false);
+      audioRef.current.onerror = () => setPlaying(false);
+    }
+    if (playing) {
+      audioRef.current.pause();
+      setPlaying(false);
+    } else {
+      audioRef.current.currentTime = 0;
+      audioRef.current.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+      // Auto-stop after 20s for snappy review.
+      setTimeout(() => {
+        if (audioRef.current) {
+          try { audioRef.current.pause(); } catch {}
+          setPlaying(false);
+        }
+      }, 20000);
+    }
+  };
+
+  return (
+    <div className="rounded-2xl bg-stone-900 border border-stone-800 p-5 flex flex-col gap-3">
+      <div className="flex items-center gap-3">
+        <div className="text-3xl">{highlight.icon}</div>
+        <div className="flex-1 min-w-0">
+          <div className="text-stone-100 text-base font-bold uppercase tracking-wider">{highlight.label}</div>
+          <div className="text-stone-300 text-sm truncate">{highlight.detail}</div>
+        </div>
+      </div>
+      <div className="text-stone-400 text-sm">
+        {scenario?.emoji} <span className="font-semibold text-stone-200">{scenario?.title || "—"}</span>
+        {typeof s.score === "number" && (
+          <span className="ml-2 font-mono text-amber-300">{s.score}</span>
+        )}
+      </div>
+      <button
+        onClick={togglePlay}
+        disabled={!hasRec}
+        className={`w-full rounded-xl py-3 font-bold transition ${
+          hasRec
+            ? playing
+              ? "bg-red-700 hover:bg-red-600 text-white"
+              : "bg-emerald-700 hover:bg-emerald-600 text-white"
+            : "bg-stone-800 text-stone-500 cursor-not-allowed"
+        }`}
+      >
+        {hasRec ? (playing ? "⏸ Stop" : "▶ Play kid's voice (up to 20s)") : "🚫 No recording captured"}
+      </button>
     </div>
   );
 }

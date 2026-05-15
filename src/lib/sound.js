@@ -110,13 +110,61 @@ export function playConnectChirp() {
   tone({ freq: 1800, duration: 0.1, when: 0.09, gain: 0.09 });
 }
 
-// Very low call-center hum playing under the call. Returns a stop() function.
+// Hectic call-center ambience — pink-ish noise floor + occasional distant
+// sirens + faint garbled radio chatter. Returns a combined stop() function.
+function playDistantSiren() {
+  const ac = audioCtx();
+  if (!ac) return;
+  const osc = ac.createOscillator();
+  const g = ac.createGain();
+  osc.type = "sine";
+  // Two slow wail cycles.
+  osc.frequency.setValueAtTime(700, ac.currentTime);
+  osc.frequency.linearRampToValueAtTime(1100, ac.currentTime + 1.0);
+  osc.frequency.linearRampToValueAtTime(700, ac.currentTime + 2.0);
+  osc.frequency.linearRampToValueAtTime(1100, ac.currentTime + 3.0);
+  g.gain.setValueAtTime(0, ac.currentTime);
+  g.gain.linearRampToValueAtTime(0.02, ac.currentTime + 0.3);
+  g.gain.linearRampToValueAtTime(0, ac.currentTime + 3.5);
+  osc.connect(g);
+  g.connect(ac.destination);
+  osc.start();
+  osc.stop(ac.currentTime + 3.6);
+}
+
+function playRadioChatter() {
+  const ac = audioCtx();
+  if (!ac) return;
+  const duration = 1.2 + Math.random() * 1.5;
+  const buf = ac.createBuffer(1, Math.floor(ac.sampleRate * duration), ac.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) {
+    const t = i / ac.sampleRate;
+    // Modulated noise with rough "speech-like" envelope.
+    const env = 0.4 + 0.6 * Math.abs(Math.sin(t * 12));
+    data[i] = (Math.random() * 2 - 1) * env;
+  }
+  const src = ac.createBufferSource();
+  src.buffer = buf;
+  const filter = ac.createBiquadFilter();
+  filter.type = "bandpass";
+  filter.frequency.value = 1400 + Math.random() * 400;
+  filter.Q.value = 8;
+  const g = ac.createGain();
+  g.gain.value = 0.022;
+  src.connect(filter);
+  filter.connect(g);
+  g.connect(ac.destination);
+  try { src.start(); } catch {}
+}
+
 export function startAmbience() {
   const ac = audioCtx();
   if (!ac) return () => {};
+
+  // Pink-ish noise floor.
   const buf = ac.createBuffer(1, ac.sampleRate * 4, ac.sampleRate);
   const data = buf.getChannelData(0);
-  // Pink-ish noise floor.
   let last = 0;
   for (let i = 0; i < data.length; i++) {
     const white = Math.random() * 2 - 1;
@@ -130,14 +178,32 @@ export function startAmbience() {
   filter.type = "lowpass";
   filter.frequency.value = 800;
   const g = ac.createGain();
-  g.gain.value = 0.025; // very quiet
+  g.gain.value = 0.03;
   src.connect(filter);
   filter.connect(g);
   g.connect(ac.destination);
   try { src.start(); } catch { return () => {}; }
+
+  // Occasional distant siren wails.
+  const sirenInterval = setInterval(() => {
+    if (Math.random() < 0.35) playDistantSiren();
+  }, 22000);
+  // After 8s, play one right away.
+  const firstSiren = setTimeout(() => playDistantSiren(), 8000);
+
+  // Distant radio chatter bursts.
+  const chatterInterval = setInterval(() => {
+    if (Math.random() < 0.5) playRadioChatter();
+  }, 14000);
+  const firstChatter = setTimeout(() => playRadioChatter(), 4000);
+
   return () => {
     try { src.stop(); } catch {}
     try { g.disconnect(); } catch {}
+    clearInterval(sirenInterval);
+    clearInterval(chatterInterval);
+    clearTimeout(firstSiren);
+    clearTimeout(firstChatter);
   };
 }
 

@@ -43,6 +43,8 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
   const recorderRef = useRef(null);
   const recorderChunksRef = useRef([]);
   const recorderStreamRef = useRef(null);
+  const recorderMimeRef = useRef("audio/webm");
+  const [uploadStatus, setUploadStatus] = useState(null); // "uploading" | "saved" | "failed" | null
   const agentRef = useRef(agent);
   useEffect(() => {
     agentRef.current = agent;
@@ -166,39 +168,47 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
   const stt = useSpeechRecognition({ onFinalResult: handleFinalTranscript });
   sttRef.current = stt;
 
-  // Record the caller's actual voice to a webm blob and upload at end-of-call.
+  // Record the caller's actual voice to a webm/mp4 blob and upload at end-of-call.
   const startRecording = useCallback(async () => {
     if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
       console.warn("[recording] mediaDevices unavailable");
-      return;
+      return false;
     }
     if (typeof MediaRecorder === "undefined") {
-      console.warn("[recording] MediaRecorder unavailable");
-      return;
+      console.warn("[recording] MediaRecorder unavailable on this browser");
+      return false;
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       recorderStreamRef.current = stream;
-      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : MediaRecorder.isTypeSupported("audio/webm")
-          ? "audio/webm"
-          : MediaRecorder.isTypeSupported("audio/mp4")
-            ? "audio/mp4"
-            : "";
-      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      const tryMimes = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/mp4;codecs=mp4a.40.2",
+        "audio/mp4",
+        "audio/ogg;codecs=opus",
+      ];
+      const mime = tryMimes.find((t) => {
+        try { return MediaRecorder.isTypeSupported(t); } catch { return false; }
+      });
+      const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
       recorderChunksRef.current = [];
+      recorderMimeRef.current = mime || rec.mimeType || "audio/webm";
       rec.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) {
           recorderChunksRef.current.push(e.data);
+          console.log(`[recording] chunk +${e.data.size}B`);
         }
       };
       rec.onerror = (e) => console.warn("[recording] recorder error", e);
-      rec.start(1000);
+      // No timeslice — collect everything at stop(). More reliable on iOS Safari.
+      rec.start();
       recorderRef.current = rec;
-      console.log(`[recording] started with mime=${mime || "(default)"}`);
+      console.log(`[recording] started mime=${recorderMimeRef.current}`);
+      return true;
     } catch (e) {
       console.warn("[recording] failed to start:", e);
+      return false;
     }
   }, []);
 
@@ -208,38 +218,42 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
       console.log("[recording] nothing to stop");
       return;
     }
-    // Ask for a final data chunk before stopping.
-    try { rec.requestData(); } catch {}
+    setUploadStatus("uploading");
+    // stop() automatically fires a final dataavailable before onstop.
     await new Promise((resolve) => {
-      rec.onstop = () => resolve();
-      try {
-        rec.stop();
-      } catch {
-        resolve();
-      }
+      const finish = () => resolve();
+      rec.onstop = finish;
+      rec.onerror = finish;
+      try { rec.stop(); } catch { resolve(); }
     });
+    // Give a brief moment for any straggling chunks.
+    await new Promise((r) => setTimeout(r, 100));
     try {
       recorderStreamRef.current?.getTracks().forEach((t) => t.stop());
     } catch {
       // ignore
     }
-    const blob = new Blob(recorderChunksRef.current, { type: "audio/webm" });
-    console.log(`[recording] captured ${blob.size} bytes`);
+    const mime = recorderMimeRef.current || "audio/webm";
+    const blob = new Blob(recorderChunksRef.current, { type: mime });
+    console.log(`[recording] captured ${blob.size}B as ${mime}`);
     const sid = getSessionId();
     if (!sid || blob.size === 0) {
       console.warn("[recording] no session id or empty blob, skipping upload");
+      setUploadStatus("failed");
       return;
     }
     try {
       const res = await fetch(`/api/recording/${encodeURIComponent(sid)}`, {
         method: "POST",
-        headers: { "Content-Type": "audio/webm" },
+        headers: { "Content-Type": mime },
         body: blob,
       });
       const body = await res.json().catch(() => ({}));
       console.log("[recording] upload result", res.status, body);
+      setUploadStatus(res.ok ? "saved" : "failed");
     } catch (e) {
       console.warn("[recording] upload failed:", e);
+      setUploadStatus("failed");
     }
   }, []);
 
@@ -262,14 +276,18 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
       endedAt: null,
     });
     stt.start();
-    startRecording();
-    // Subtle ambient noise underneath — calmer feel.
+    // Subtle ambient noise underneath.
     ambienceStopRef.current = startAmbience();
-    if (mode === "caller") {
-      sendToAI([]);
-    } else {
-      reportAdmin({ callerStatus: "listening" });
-    }
+    // Make sure the mic recorder is actually running before the AI opens —
+    // otherwise the first second of the kid's voice gets lost.
+    (async () => {
+      await startRecording();
+      if (mode === "caller") {
+        sendToAI([]);
+      } else {
+        reportAdmin({ callerStatus: "listening" });
+      }
+    })();
     return () => {
       stt.stop();
       if (recorderRef.current && recorderRef.current.state !== "inactive") {
@@ -436,6 +454,23 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
 
   return (
     <div className="min-h-full flex flex-col max-w-md mx-auto relative bg-gradient-to-b from-stone-900 via-stone-950 to-black text-stone-100">
+      {uploadStatus === "uploading" && (
+        <div className="bg-stone-800 border-b border-stone-700 text-stone-100 px-4 py-2 text-xs text-center font-mono flex items-center justify-center gap-2">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+          Saving your call recording…
+        </div>
+      )}
+      {uploadStatus === "saved" && (
+        <div className="bg-emerald-900/60 border-b border-emerald-700 text-emerald-100 px-4 py-2 text-xs text-center font-mono">
+          ✓ Recording saved
+        </div>
+      )}
+      {uploadStatus === "failed" && (
+        <div className="bg-red-900/60 border-b border-red-700 text-red-100 px-4 py-2 text-xs text-center font-mono">
+          ⚠ Recording failed to save (your call is still complete)
+        </div>
+      )}
+
       {coachHint && (
         <div className="bg-amber-700 text-white px-4 py-2 text-sm font-bold text-center flex items-center justify-center gap-2 animate-pulse">
           <span>👨‍🏫</span>

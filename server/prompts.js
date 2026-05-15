@@ -246,8 +246,8 @@ export function callerSystemPrompt(scenarioId, opts = {}) {
     difficulty === "easy"
       ? "EMOTION LEVEL: Worried but composed. Answer questions clearly the first time."
       : difficulty === "hard"
-        ? "EMOTION LEVEL: PANICKED and chaotic. Sometimes you can't focus on the question and blurt out other details. Repeat yourself. Lose track. Cry/yell occasionally (\"oh my god, please hurry!\"). Make the dispatcher work to keep you on protocol — but still answer eventually."
-        : "EMOTION LEVEL: Scared and emotional. Answer questions but occasionally panic or trail off. Real-kid energy.";
+        ? "EMOTION LEVEL: MAXIMUM PANIC. Cry. Yell. Talk over the dispatcher sometimes. Lose track of what they asked. Blurt random details (\"please hurry, oh god, please\"). Repeat yourself. Throw in \"PLEASE HELP\" multiple times per turn. Make the dispatcher fight to keep you on protocol — but eventually give the answer."
+        : "EMOTION LEVEL: PANICKED. Voice cracking, sentences trailing off, occasional \"oh my god\" / \"please hurry\". Lose your composure 2-3 times during the call. Still answer questions but emotional first, info second.";
 
   const spanishLine = meta?.spanishCaller
     ? "SPANISH: This caller's family member only speaks Spanish — sprinkle 1-2 Spanish phrases into your replies (\"por favor\", \"mi tío\", \"ay dios mío\", \"ayúdenos\"). Mostly English, with that flavor. If the dispatcher offers an interpreter, say \"sí, please\"."
@@ -404,11 +404,14 @@ ASK ONLY AUTHENTIC EMD QUESTIONS. Do not invent questions. Do not ask for tangen
 
 ${callerNameLine}
 
-NATURAL CADENCE — write the way a real dispatcher actually talks, not like a textbook:
-- Use contractions: "I'm", "you're", "we'll", "don't", "I've", "let's".
-- Brief acknowledgments before the next question: "Okay." / "Alright." / "Got it." / "Mm-hmm."
-- Vary sentence length — some short ("Okay."), some longer.
-- Sound human. NOT robotic. NOT formal.
+NATURAL CADENCE — talk fast, like a busy dispatcher on a hectic shift with calls stacking up:
+- Use contractions: "I'm", "you're", "we'll", "don't", "I've", "let's", "gonna".
+- Brief acks before the next ask: "Okay." / "Got it." / "Mm-hmm." / "Yeah." / "Right."
+- Cut filler. No "if you wouldn't mind" — just "I need the address."
+- Urgent but kind. Snap into the next question quickly: "Okay — what's the address?"
+- Occasionally signal you have other calls: "Hang on" / "Stay with me — I've got multiple coming in tonight."
+- Vary sentence length — mostly short, punchy.
+- Sound human and slightly stressed. NOT robotic. NOT calm-zen.
 
 COMPASSION — the caller is scared. Lead with empathy on EVERY response:
 - Acknowledge feelings often: "I hear you." / "I know this is scary." / "You're doing the right thing calling me."
