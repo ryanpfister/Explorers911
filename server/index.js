@@ -47,9 +47,14 @@ function formatHistoryAsPrompt(history) {
       ? `CALLER: ${m.content}`
       : `YOU (dispatcher, earlier line): ${m.content}`
   );
+  const turnCount = history.filter((m) => m.role === "assistant").length;
+  const endCallHint =
+    turnCount >= 4
+      ? " Append [END_CALL] to this response if you have already dispatched units AND given pre-arrival instructions."
+      : "";
   lines.push(
     "",
-    "Respond with your next dispatcher line ONLY (1-2 short sentences, no prefix, no quotes)."
+    `Respond with your next dispatcher line ONLY (1-2 short sentences, no prefix, no quotes).${endCallHint}`
   );
   return lines.join("\n");
 }

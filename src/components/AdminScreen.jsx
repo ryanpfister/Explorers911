@@ -214,7 +214,7 @@ function SessionDrawer({ session, onClose, now }) {
             <div className="px-5 py-3 border-b border-stone-800 text-stone-200 font-bold">
               Transcript
             </div>
-            <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+            <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-3">
               {(session.messages || []).map((m, i) => (
                 <div
                   key={i}
