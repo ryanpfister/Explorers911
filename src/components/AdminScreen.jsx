@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { scenarioById, difficultyColor } from "../scenarios.js";
 import { resetAdmin, deleteSession } from "../lib/admin.js";
+import ReviewScreen from "./ReviewScreen.jsx";
 
 const PHONETIC = {
   A: "Alpha", B: "Bravo", C: "Charlie", D: "Delta", E: "Echo",
@@ -438,6 +439,7 @@ export default function AdminScreen() {
   const [filter, setFilter] = useState("active"); // active | all
   const [latestDispatch, setLatestDispatch] = useState(null);
   const [audioReady, setAudioReady] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
   const spokenDispatchKeys = useRef(new Set());
 
   useEffect(() => {
@@ -526,6 +528,13 @@ export default function AdminScreen() {
 
   const selected = selectedId ? sessions[selectedId] : null;
 
+  const reviewable = useMemo(() => {
+    const arr = Object.values(sessions).filter(
+      (s) => s.status === "ended" || s.status === "feedback-ready" || (s.messages && s.messages.length > 1)
+    );
+    return arr.sort((a, b) => (a.startedAt || 0) - (b.startedAt || 0));
+  }, [sessions]);
+
   return (
     <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col">
       {/* Header */}
@@ -610,6 +619,14 @@ export default function AdminScreen() {
             <span className="text-emerald-300 text-xs font-mono">🔊 audio live</span>
           )}
           <button
+            onClick={() => setReviewing(true)}
+            disabled={reviewable.length === 0}
+            className="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 border border-emerald-600 text-white text-sm font-bold disabled:opacity-30 disabled:cursor-not-allowed"
+            title={reviewable.length === 0 ? "Need at least one completed call" : "Review all completed calls"}
+          >
+            🎬 Session Review ({reviewable.length})
+          </button>
+          <button
             onClick={() => {
               if (confirm("Clear ALL sessions from the projector?")) {
                 resetAdmin();
@@ -677,6 +694,13 @@ export default function AdminScreen() {
           session={selected}
           onClose={() => setSelectedId(null)}
           now={now}
+        />
+      )}
+
+      {reviewing && (
+        <ReviewScreen
+          sessions={reviewable}
+          onClose={() => setReviewing(false)}
         />
       )}
     </div>
