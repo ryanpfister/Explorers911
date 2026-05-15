@@ -1,0 +1,17 @@
+[Unit]
+Description=911 Training Simulator (Node/Express)
+After=network.target
+
+[Service]
+Type=simple
+User=explorers911
+WorkingDirectory=/opt/explorers911
+EnvironmentFile=/opt/explorers911/.env
+Environment=NODE_ENV=production
+Environment=PORT=8787
+ExecStart=/usr/bin/node server/index.js
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
