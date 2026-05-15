@@ -103,3 +103,9 @@ export function playHoldTone() {
   tone({ freq: 1209, duration: 0.2, when: 0.28, gain: 0.09 });
   tone({ freq: 852, duration: 0.3, when: 0.58, gain: 0.07 });
 }
+
+// Brief two-tone chirp when the call "connects" — like a radio confirming.
+export function playConnectChirp() {
+  tone({ freq: 1200, duration: 0.07, when: 0, gain: 0.09 });
+  tone({ freq: 1800, duration: 0.1, when: 0.09, gain: 0.09 });
+}

@@ -1,7 +1,7 @@
 import React, { useEffect } from "react";
 import { playRing } from "../lib/sound.js";
 
-export default function RingingScreen({ scenario, onConnected, onCancel }) {
+export default function RingingScreen({ scenario, dispatcher, onConnected, onCancel }) {
   useEffect(() => {
     playRing();
     const t = setTimeout(onConnected, 2200);
@@ -18,6 +18,11 @@ export default function RingingScreen({ scenario, onConnected, onCancel }) {
           911
         </div>
         <div className="text-stone-300 text-base mt-3">{scenario?.title}</div>
+        {dispatcher && (
+          <div className="text-stone-500 text-xs mt-1 font-mono">
+            Connecting to Dispatcher {dispatcher.lastName} · #{dispatcher.badge}
+          </div>
+        )}
         {scenario?.brief && (
           <div className="mt-4 mx-auto max-w-xs rounded-xl border border-stone-700 bg-stone-800/60 px-4 py-3 text-stone-200 text-sm leading-snug">
             <div className="text-[10px] uppercase tracking-widest text-stone-400 mb-1">

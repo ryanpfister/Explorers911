@@ -1,8 +1,8 @@
-export async function dispatcherReply({ scenarioId, messages }) {
+export async function dispatcherReply({ scenarioId, messages, dispatcher }) {
   const res = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ scenarioId, messages }),
+    body: JSON.stringify({ scenarioId, messages, dispatcher }),
   });
   if (!res.ok) {
     const body = await res.text();

@@ -38,11 +38,16 @@ function rankVoice(v) {
   return score;
 }
 
-function pickDispatcherVoice(voices) {
+function pickDispatcherVoice(voices, seed = 0) {
   if (!voices || voices.length === 0) return null;
   const en = voices.filter((v) => v.lang && /^en/i.test(v.lang));
   const pool = en.length ? en : voices;
-  return [...pool].sort((a, b) => rankVoice(b) - rankVoice(a))[0] || null;
+  const ranked = [...pool].sort((a, b) => rankVoice(b) - rankVoice(a));
+  // Rotate among the top voices so each call gets a different dispatcher.
+  const topN = Math.min(3, ranked.length);
+  if (topN === 0) return null;
+  const idx = ((seed % topN) + topN) % topN;
+  return ranked[idx] || ranked[0];
 }
 
 export function primeSpeechSynthesis() {
@@ -59,7 +64,7 @@ export function primeSpeechSynthesis() {
   }
 }
 
-export function useSpeechSynthesis() {
+export function useSpeechSynthesis({ voiceSeed = 0 } = {}) {
   const [speaking, setSpeaking] = useState(false);
   const voiceRef = useRef(null);
   const onEndRef = useRef(null);
@@ -68,7 +73,7 @@ export function useSpeechSynthesis() {
     if (!speechSynthesisSupported) return;
     const updateVoice = () => {
       const voices = window.speechSynthesis.getVoices();
-      voiceRef.current = pickDispatcherVoice(voices);
+      voiceRef.current = pickDispatcherVoice(voices, voiceSeed);
     };
     updateVoice();
     window.speechSynthesis.onvoiceschanged = updateVoice;
@@ -78,7 +83,7 @@ export function useSpeechSynthesis() {
       window.speechSynthesis.onvoiceschanged = null;
       clearTimeout(t);
     };
-  }, []);
+  }, [voiceSeed]);
 
   const speak = useCallback((text, { onEnd } = {}) => {
     if (!speechSynthesisSupported || !text) {

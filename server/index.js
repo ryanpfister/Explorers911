@@ -49,8 +49,8 @@ function formatHistoryAsPrompt(history) {
   );
   const turnCount = history.filter((m) => m.role === "assistant").length;
   const endCallHint =
-    turnCount >= 10
-      ? " Append [END_CALL] to this response if you have already dispatched units, given at least two pre-arrival instructions, AND told the caller to stay on the line."
+    turnCount >= 7
+      ? " If you have already dispatched units AND given at least one pre-arrival instruction, your next response should announce that crews are arriving on scene now (e.g. 'I can hear the sirens — crews are pulling up now.') and append [END_CALL]."
       : "";
   lines.push(
     "",
@@ -93,7 +93,7 @@ function extractEmdCode(feedback) {
 }
 
 app.post("/api/chat", async (req, res) => {
-  const { scenarioId, messages } = req.body || {};
+  const { scenarioId, messages, dispatcher } = req.body || {};
   if (!scenarioId) {
     return res.status(400).json({ error: "scenarioId is required" });
   }
@@ -101,7 +101,7 @@ app.post("/api/chat", async (req, res) => {
 
   try {
     const reply = await runQuery({
-      systemPrompt: dispatcherSystemPrompt(scenarioId),
+      systemPrompt: dispatcherSystemPrompt(scenarioId, dispatcher),
       userPrompt: formatHistoryAsPrompt(history),
     });
     res.json({ reply });

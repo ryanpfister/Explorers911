@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useSpeechRecognition } from "../hooks/useSpeechRecognition.js";
 import { useSpeechSynthesis } from "../hooks/useSpeechSynthesis.js";
 import { dispatcherReply } from "../lib/api.js";
-import { playEndBeep, playTypingLoop, playHoldTone } from "../lib/sound.js";
+import { playEndBeep, playTypingLoop, playHoldTone, playConnectChirp } from "../lib/sound.js";
 
 const DISPATCH_RE = /\b(stand by|hold on|dispatching|dispatch|en route|on (?:the|their) way|responding|heading your way|units (?:are|have been)|sending .+(?:fire|ems|ambulance|medic|rescue))\b/i;
 import { reportAdmin } from "../lib/admin.js";
@@ -17,7 +17,7 @@ function formatTimer(seconds) {
   return `${m}:${s}`;
 }
 
-export default function CallScreen({ scenario, onEnd }) {
+export default function CallScreen({ scenario, dispatcher, onEnd }) {
   const [messages, setMessages] = useState([]);
   const [thinking, setThinking] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -27,7 +27,7 @@ export default function CallScreen({ scenario, onEnd }) {
   const endSentinelRef = useRef(null);
   const endedRef = useRef(false);
 
-  const synth = useSpeechSynthesis();
+  const synth = useSpeechSynthesis({ voiceSeed: dispatcher?.badge || 0 });
   const messagesRef = useRef(messages);
   const typingStopRef = useRef(null);
   useEffect(() => {
@@ -51,6 +51,7 @@ export default function CallScreen({ scenario, onEnd }) {
         const { reply } = await dispatcherReply({
           scenarioId: scenario.id,
           messages: history,
+          dispatcher,
         });
         const isFinal = reply.includes(END_TAG);
         const cleaned = reply.replace(END_TAG, "").trim();
@@ -94,7 +95,7 @@ export default function CallScreen({ scenario, onEnd }) {
         sttRef.current?.resume();
       }
     },
-    [scenario.id, synth, onEnd]
+    [scenario.id, synth, onEnd, dispatcher]
   );
 
   const handleFinalTranscript = useCallback(
@@ -112,6 +113,7 @@ export default function CallScreen({ scenario, onEnd }) {
 
   // Kick off: announce session, fetch the opener, start listening.
   useEffect(() => {
+    playConnectChirp();
     reportAdmin({
       status: "in-call",
       scenarioId: scenario.id,
@@ -200,12 +202,25 @@ export default function CallScreen({ scenario, onEnd }) {
       {/* Header */}
       <div className="px-5 pt-6 pb-4 flex items-center justify-between border-b border-stone-800">
         <div className="min-w-0">
-          <div className="text-stone-400 text-xs uppercase tracking-widest truncate">
-            In Call · {scenario.title}
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-950/60 border border-red-800/60">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+              <span className="text-red-300 text-[9px] font-bold uppercase tracking-widest">
+                REC
+              </span>
+            </span>
+            <div className="text-stone-400 text-xs uppercase tracking-widest truncate">
+              {scenario.title}
+            </div>
           </div>
           <div className="text-stone-100 text-lg font-bold mt-0.5">
             Suffolk County 911
           </div>
+          {dispatcher && (
+            <div className="text-stone-500 text-[11px] font-mono mt-0.5 truncate">
+              Disp. {dispatcher.lastName} · #{dispatcher.badge}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <span

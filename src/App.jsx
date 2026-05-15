@@ -11,6 +11,7 @@ import {
 } from "./hooks/useSpeechSynthesis.js";
 import { primeAudio } from "./lib/sound.js";
 import { newSessionId, setSessionId } from "./lib/admin.js";
+import { generateDispatcherPersona } from "./lib/persona.js";
 
 const STAGES = {
   HOME: "home",
@@ -51,6 +52,7 @@ export default function App() {
   const [scenario, setScenario] = useState(null);
   const [transcript, setTranscript] = useState([]);
   const [permissionError, setPermissionError] = useState(null);
+  const [dispatcher, setDispatcher] = useState(null);
   const sessionIdRef = useRef(null);
 
   const sttOk = speechRecognitionSupported;
@@ -80,6 +82,7 @@ export default function App() {
     sessionIdRef.current = id;
     setSessionId(id);
 
+    setDispatcher(generateDispatcherPersona());
     setScenario(s);
     setTranscript([]);
     setStage(STAGES.RINGING);
@@ -99,6 +102,7 @@ export default function App() {
   const handleRestart = () => {
     setScenario(null);
     setTranscript([]);
+    setDispatcher(null);
     sessionIdRef.current = null;
     setSessionId(null);
     setStage(STAGES.HOME);
@@ -116,12 +120,17 @@ export default function App() {
       {stage === STAGES.RINGING && scenario && (
         <RingingScreen
           scenario={scenario}
+          dispatcher={dispatcher}
           onConnected={handleConnected}
           onCancel={handleCancel}
         />
       )}
       {stage === STAGES.CALL && scenario && (
-        <CallScreen scenario={scenario} onEnd={handleCallEnd} />
+        <CallScreen
+          scenario={scenario}
+          dispatcher={dispatcher}
+          onEnd={handleCallEnd}
+        />
       )}
       {stage === STAGES.FEEDBACK && scenario && (
         <FeedbackScreen
