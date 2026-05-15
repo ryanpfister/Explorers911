@@ -44,10 +44,45 @@ function speakAnnouncement(text) {
   if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
   window.speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
-  u.rate = 0.95;
+  u.rate = 1.1;
   u.pitch = 1.0;
   u.volume = 1.0;
   window.speechSynthesis.speak(u);
+}
+
+// Suffolk County FRES uses Plectron-style two-tone alerting before voice dispatch.
+// Two pure sine tones (~700Hz and ~1000Hz), the second one longer.
+function playAlertTones() {
+  if (typeof window === "undefined") return null;
+  const Ctor = window.AudioContext || window.webkitAudioContext;
+  if (!Ctor) return null;
+  const ac = new Ctor();
+  if (ac.state === "suspended") ac.resume().catch(() => {});
+
+  function tone(freq, start, duration, gain = 0.18) {
+    const osc = ac.createOscillator();
+    const g = ac.createGain();
+    osc.type = "sine";
+    osc.frequency.value = freq;
+    g.gain.setValueAtTime(0, ac.currentTime + start);
+    g.gain.linearRampToValueAtTime(gain, ac.currentTime + start + 0.02);
+    g.gain.linearRampToValueAtTime(gain, ac.currentTime + start + duration - 0.05);
+    g.gain.linearRampToValueAtTime(0, ac.currentTime + start + duration);
+    osc.connect(g);
+    g.connect(ac.destination);
+    osc.start(ac.currentTime + start);
+    osc.stop(ac.currentTime + start + duration + 0.05);
+  }
+
+  tone(700, 0, 1.0);
+  tone(1000, 1.05, 2.2);
+  return 3300; // total ms — caller waits this long before speaking
+}
+
+async function announceDispatch(d) {
+  const waitMs = playAlertTones() || 0;
+  await new Promise((r) => setTimeout(r, waitMs + 200));
+  speakAnnouncement(buildAnnouncementText(d));
 }
 
 function formatTimer(ms) {
@@ -430,7 +465,7 @@ export default function AdminScreen() {
       spokenDispatchKeys.current.add(key);
       const enriched = { ...s.dispatch, sessionId: s.id };
       setLatestDispatch(enriched);
-      speakAnnouncement(buildAnnouncementText(enriched));
+      announceDispatch(enriched);
     }
   }, [sessions, audioReady]);
 
@@ -450,7 +485,7 @@ export default function AdminScreen() {
 
   const replayLatest = () => {
     if (!latestDispatch) return;
-    speakAnnouncement(buildAnnouncementText(latestDispatch));
+    announceDispatch(latestDispatch);
   };
 
   useEffect(() => {
