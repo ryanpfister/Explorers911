@@ -3,34 +3,48 @@ import { useCallback, useEffect, useRef, useState } from "react";
 export const speechSynthesisSupported =
   typeof window !== "undefined" && "speechSynthesis" in window;
 
-function pickDispatcherVoice(voices) {
-  if (!voices || voices.length === 0) return null;
-  const english = voices.filter((v) => v.lang && v.lang.toLowerCase().startsWith("en"));
-  const pool = english.length ? english : voices;
-  const preferred = [
-    "Samantha", // macOS / iOS Safari default — high quality
-    "Google US English",
-    "Microsoft Aria Online (Natural) - English (United States)",
-    "Microsoft Jenny Online (Natural) - English (United States)",
-    "Karen",
-    "Victoria",
-    "Allison",
-  ];
-  for (const name of preferred) {
-    const match = pool.find((v) => v.name === name);
-    if (match) return match;
-  }
-  const female = pool.find((v) =>
-    /female|samantha|victoria|karen|aria|jenny|zira|allison/i.test(v.name)
-  );
-  return female || pool[0];
+// Rank every available voice. Higher = better. Picks the most modern /
+// neural voice the browser exposes on this device.
+function rankVoice(v) {
+  const name = v.name || "";
+  const lang = v.lang || "";
+  let score = 0;
+  // Tier 1: Microsoft Online "Natural" (neural) voices in Edge
+  if (/Microsoft.+Online.+\(Natural\)/i.test(name)) score += 1000;
+  if (/\(Natural\)/i.test(name)) score += 900;
+  // Tier 2: iOS premium / enhanced / Siri voices
+  if (/\(Premium\)/i.test(name)) score += 850;
+  if (/Siri/i.test(name)) score += 800;
+  if (/\(Enhanced\)/i.test(name)) score += 750;
+  // Tier 3: Google Cloud TTS voices (Chrome desktop, Android)
+  if (/^Google.*\bUS English\b/i.test(name)) score += 650;
+  if (/^Google.*\bUK English\b.*Female/i.test(name)) score += 600;
+  if (/^Google.*English/i.test(name)) score += 500;
+  // Tier 4: solid named voices
+  if (/^Samantha\b/i.test(name)) score += 450;
+  if (/Aria|Jenny|Ava|Emma/i.test(name)) score += 400;
+  if (/Allison|Victoria|Karen|Moira|Tessa/i.test(name)) score += 300;
+  // Hint: prefer female-sounding voices (calmer dispatcher cadence)
+  if (/female/i.test(name)) score += 100;
+  // Tier 5: any Microsoft / Google voice
+  if (/^Microsoft\b/i.test(name)) score += 80;
+  if (/^Google\b/i.test(name)) score += 60;
+  // Accent bonus
+  if (/^en-US/i.test(lang)) score += 50;
+  if (/^en-GB/i.test(lang)) score += 30;
+  if (/^en/i.test(lang)) score += 10;
+  // Local voices preferred when present
+  if (v.localService) score += 5;
+  return score;
 }
 
-/**
- * Must be called from a direct user gesture (e.g. a click handler) to
- * unlock speech synthesis on iOS Safari. Triggers a near-silent
- * utterance to commit the audio output stream. Safe to call repeatedly.
- */
+function pickDispatcherVoice(voices) {
+  if (!voices || voices.length === 0) return null;
+  const en = voices.filter((v) => v.lang && /^en/i.test(v.lang));
+  const pool = en.length ? en : voices;
+  return [...pool].sort((a, b) => rankVoice(b) - rankVoice(a))[0] || null;
+}
+
 export function primeSpeechSynthesis() {
   if (!speechSynthesisSupported) return;
   try {
@@ -58,8 +72,11 @@ export function useSpeechSynthesis() {
     };
     updateVoice();
     window.speechSynthesis.onvoiceschanged = updateVoice;
+    // Some browsers populate the list asynchronously; re-check shortly.
+    const t = setTimeout(updateVoice, 250);
     return () => {
       window.speechSynthesis.onvoiceschanged = null;
+      clearTimeout(t);
     };
   }, []);
 
@@ -68,16 +85,16 @@ export function useSpeechSynthesis() {
       onEnd?.();
       return;
     }
-    // Re-pick the voice in case voices loaded after first render (Safari).
     if (!voiceRef.current) {
-      const voices = window.speechSynthesis.getVoices();
-      voiceRef.current = pickDispatcherVoice(voices);
+      voiceRef.current = pickDispatcherVoice(window.speechSynthesis.getVoices());
     }
+
     window.speechSynthesis.cancel();
     const utter = new SpeechSynthesisUtterance(text);
     if (voiceRef.current) utter.voice = voiceRef.current;
-    utter.rate = 1.0;
-    utter.pitch = 1.0;
+    // Slightly slower + slightly lower pitch = professional dispatcher cadence
+    utter.rate = 0.95;
+    utter.pitch = 0.95;
     utter.volume = 1.0;
     onEndRef.current = onEnd || null;
     utter.onstart = () => setSpeaking(true);
@@ -89,8 +106,6 @@ export function useSpeechSynthesis() {
       setSpeaking(false);
       onEndRef.current?.();
     };
-    // Safari sometimes drops the first speak() if invoked too quickly
-    // after cancel(); a microtask defer makes it reliable.
     setTimeout(() => {
       try {
         window.speechSynthesis.speak(utter);

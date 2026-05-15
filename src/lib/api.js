@@ -11,11 +11,11 @@ export async function dispatcherReply({ scenarioId, messages }) {
   return res.json();
 }
 
-export async function fetchFeedback({ scenarioId, messages }) {
+export async function fetchFeedback({ scenarioId, messages, sessionId }) {
   const res = await fetch("/api/feedback", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ scenarioId, messages }),
+    body: JSON.stringify({ scenarioId, messages, sessionId }),
   });
   if (!res.ok) {
     const body = await res.text();

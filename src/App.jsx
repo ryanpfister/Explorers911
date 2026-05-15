@@ -1,17 +1,16 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import HomeScreen from "./components/HomeScreen.jsx";
 import RingingScreen from "./components/RingingScreen.jsx";
 import CallScreen from "./components/CallScreen.jsx";
 import FeedbackScreen from "./components/FeedbackScreen.jsx";
 import AdminScreen from "./components/AdminScreen.jsx";
-import {
-  speechRecognitionSupported,
-} from "./hooks/useSpeechRecognition.js";
+import { speechRecognitionSupported } from "./hooks/useSpeechRecognition.js";
 import {
   speechSynthesisSupported,
   primeSpeechSynthesis,
 } from "./hooks/useSpeechSynthesis.js";
 import { primeAudio } from "./lib/sound.js";
+import { newSessionId, setSessionId } from "./lib/admin.js";
 
 const STAGES = {
   HOME: "home",
@@ -52,6 +51,7 @@ export default function App() {
   const [scenario, setScenario] = useState(null);
   const [transcript, setTranscript] = useState([]);
   const [permissionError, setPermissionError] = useState(null);
+  const sessionIdRef = useRef(null);
 
   const sttOk = speechRecognitionSupported;
   const ttsOk = speechSynthesisSupported;
@@ -62,9 +62,7 @@ export default function App() {
       : permissionError;
 
   const handlePick = async (s) => {
-    // CRITICAL for iOS Safari: unlock both audio context and speech
-    // synthesis from inside this direct user-gesture handler, before
-    // any async work. Otherwise no sound will play later.
+    // Unlock audio + speech synth from this direct gesture (iOS Safari).
     primeAudio();
     primeSpeechSynthesis();
 
@@ -76,6 +74,12 @@ export default function App() {
       return;
     }
     setPermissionError(null);
+
+    // Mint a fresh session for the projector.
+    const id = newSessionId();
+    sessionIdRef.current = id;
+    setSessionId(id);
+
     setScenario(s);
     setTranscript([]);
     setStage(STAGES.RINGING);
@@ -95,6 +99,8 @@ export default function App() {
   const handleRestart = () => {
     setScenario(null);
     setTranscript([]);
+    sessionIdRef.current = null;
+    setSessionId(null);
     setStage(STAGES.HOME);
   };
 
@@ -121,6 +127,7 @@ export default function App() {
         <FeedbackScreen
           scenario={scenario}
           messages={transcript}
+          sessionId={sessionIdRef.current}
           onRestart={handleRestart}
         />
       )}

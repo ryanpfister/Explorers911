@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useSpeechRecognition } from "../hooks/useSpeechRecognition.js";
 import { useSpeechSynthesis } from "../hooks/useSpeechSynthesis.js";
 import { dispatcherReply } from "../lib/api.js";
-import { playBlip, playEndBeep } from "../lib/sound.js";
+import { playEndBeep } from "../lib/sound.js";
 import { reportAdmin } from "../lib/admin.js";
 
 const END_TAG = "[END_CALL]";
@@ -26,17 +26,21 @@ export default function CallScreen({ scenario, onEnd }) {
   const endedRef = useRef(false);
 
   const synth = useSpeechSynthesis();
-
-  // Keep an up-to-date ref of messages so the end-of-speech callback
-  // can hand the full transcript to the feedback step.
   const messagesRef = useRef(messages);
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
 
+  // Will be reassigned once useSpeechRecognition runs — but the dispatcher
+  // logic needs to reference it via a ref to avoid stale closures.
+  const sttRef = useRef(null);
+
   const sendToDispatcher = useCallback(
     async (history) => {
       if (endedRef.current) return;
+      // Mute the mic while we wait + speak so the dispatcher's own voice
+      // doesn't get picked up by the kid's phone microphone.
+      sttRef.current?.pause();
       setThinking(true);
       setError(null);
       reportAdmin({ callerStatus: "thinking", messages: history });
@@ -56,7 +60,6 @@ export default function CallScreen({ scenario, onEnd }) {
         });
         synth.speak(cleaned, {
           onEnd: () => {
-            reportAdmin({ callerStatus: null });
             if (isFinal && !endedRef.current) {
               endedRef.current = true;
               setEndedReason("dispatched");
@@ -67,13 +70,18 @@ export default function CallScreen({ scenario, onEnd }) {
                 callerStatus: null,
               });
               setTimeout(() => onEnd(messagesRef.current), 1200);
+              return;
             }
+            // Dispatcher finished — open the mic back up for the caller.
+            reportAdmin({ callerStatus: "listening" });
+            sttRef.current?.resume();
           },
         });
       } catch (e) {
         setThinking(false);
         setError(e.message || "Something went wrong.");
-        reportAdmin({ callerStatus: null });
+        reportAdmin({ callerStatus: "listening" });
+        sttRef.current?.resume();
       }
     },
     [scenario.id, synth, onEnd]
@@ -90,8 +98,9 @@ export default function CallScreen({ scenario, onEnd }) {
   );
 
   const stt = useSpeechRecognition({ onFinalResult: handleFinalTranscript });
+  sttRef.current = stt;
 
-  // Initial: announce session to admin, then kick off opener.
+  // Kick off: announce session, fetch the opener, start listening.
   useEffect(() => {
     reportAdmin({
       status: "in-call",
@@ -103,12 +112,14 @@ export default function CallScreen({ scenario, onEnd }) {
       emdCode: null,
       endedAt: null,
     });
+    stt.start();
     sendToDispatcher([]);
+    return () => stt.stop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Push interim transcripts to admin too, so the projector sees the
-  // caller's words live as they speak.
+  // Stream interim transcripts to admin so the projector can show
+  // the kid's words in real time.
   useEffect(() => {
     reportAdmin({ interim: stt.interim });
   }, [stt.interim]);
@@ -119,39 +130,21 @@ export default function CallScreen({ scenario, onEnd }) {
     return () => clearInterval(t);
   }, []);
 
-  // Auto-scroll transcript on every change. Use the sentinel div so we
-  // pin to the very bottom even when content grows mid-frame.
+  // Auto-scroll.
   useEffect(() => {
-    const sentinel = endSentinelRef.current;
     const container = scrollRef.current;
-    if (sentinel && container) {
-      // requestAnimationFrame avoids racing layout when interim text
-      // expands by a single character per frame on Chrome.
-      requestAnimationFrame(() => {
-        container.scrollTop = container.scrollHeight;
-      });
-    }
+    if (!container) return;
+    requestAnimationFrame(() => {
+      container.scrollTop = container.scrollHeight;
+    });
   }, [messages, thinking, stt.interim]);
-
-  const handleMicDown = useCallback(() => {
-    if (endedRef.current || thinking) return;
-    if (synth.speaking) synth.stop();
-    playBlip();
-    reportAdmin({ callerStatus: "listening" });
-    stt.start();
-  }, [stt, synth, thinking]);
-
-  const handleMicUp = useCallback(() => {
-    if (!stt.listening) return;
-    stt.stop();
-  }, [stt]);
 
   const handleEnd = useCallback(() => {
     if (endedRef.current) return;
     endedRef.current = true;
     setEndedReason("user");
     synth.stop();
-    stt.cancel();
+    stt.stop();
     playEndBeep();
     reportAdmin({
       status: "ended",
@@ -161,19 +154,36 @@ export default function CallScreen({ scenario, onEnd }) {
     setTimeout(() => onEnd(messagesRef.current), 400);
   }, [synth, stt, onEnd]);
 
+  const handleInterrupt = useCallback(() => {
+    if (!synth.speaking) return;
+    synth.stop();
+    reportAdmin({ callerStatus: "listening" });
+    stt.resume();
+  }, [synth, stt]);
+
+  const status = endedReason
+    ? "Call ended"
+    : synth.speaking
+      ? "Dispatcher is speaking…"
+      : thinking
+        ? "Sending to dispatcher…"
+        : stt.listening
+          ? "Listening — talk normally"
+          : "Mic paused";
+
   return (
     <div className="min-h-full flex flex-col max-w-md mx-auto">
       {/* Header */}
       <div className="px-5 pt-6 pb-4 flex items-center justify-between border-b border-stone-800">
-        <div>
-          <div className="text-stone-400 text-xs uppercase tracking-widest">
+        <div className="min-w-0">
+          <div className="text-stone-400 text-xs uppercase tracking-widest truncate">
             In Call · {scenario.title}
           </div>
           <div className="text-stone-100 text-lg font-bold mt-0.5">
             Suffolk County 911
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <span
             className={`inline-block w-2.5 h-2.5 rounded-full ${
               synth.speaking
@@ -246,42 +256,39 @@ export default function CallScreen({ scenario, onEnd }) {
         <div ref={endSentinelRef} />
       </div>
 
-      {/* Controls */}
+      {/* Status + controls */}
       <div className="px-5 pt-3 pb-7 border-t border-stone-800 bg-stone-900">
-        <div className="text-center text-stone-400 text-xs mb-3 h-4">
-          {endedReason
-            ? "Call ended"
-            : synth.speaking
-              ? "Dispatcher is speaking…"
-              : stt.listening
-                ? "Listening — release to send"
-                : thinking
-                  ? "Sending…"
-                  : "Hold the mic to talk"}
+        <div className="flex items-center justify-center gap-3 mb-3">
+          <div
+            className={`w-3 h-3 rounded-full ${
+              stt.listening
+                ? "bg-red-500 animate-pulse-slow"
+                : synth.speaking
+                  ? "bg-green-400 animate-pulse-slow"
+                  : "bg-stone-600"
+            }`}
+          />
+          <div className="text-stone-300 text-sm font-medium">{status}</div>
         </div>
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
           <button
             onClick={handleEnd}
-            className="flex-1 h-14 rounded-2xl bg-stone-800 hover:bg-stone-700 text-stone-200 font-bold border border-stone-700"
+            className="flex-1 h-14 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-bold text-lg shadow-lg"
           >
             End Call
           </button>
           <button
-            onPointerDown={handleMicDown}
-            onPointerUp={handleMicUp}
-            onPointerLeave={handleMicUp}
-            onPointerCancel={handleMicUp}
-            disabled={!!endedReason || thinking}
-            className={`w-20 h-20 rounded-full flex items-center justify-center text-3xl text-white shadow-xl transition ${
-              stt.listening
-                ? "bg-red-500 scale-110 ring-4 ring-red-400/40"
-                : "bg-red-600 hover:bg-red-700"
-            } disabled:opacity-40 disabled:cursor-not-allowed`}
-            aria-label="Hold to talk"
+            onClick={handleInterrupt}
+            disabled={!synth.speaking}
+            className="h-14 px-5 rounded-2xl bg-stone-800 hover:bg-stone-700 text-stone-200 font-semibold border border-stone-700 disabled:opacity-30 disabled:cursor-not-allowed"
+            title="Interrupt dispatcher (jump back in)"
           >
-            🎙
+            ✋ Interrupt
           </button>
-          <div className="flex-1" />
+        </div>
+        <div className="text-center text-stone-500 text-[11px] mt-3 leading-snug">
+          For best results, hold the phone close to your mouth.
+          Headphones help in noisy rooms.
         </div>
       </div>
     </div>

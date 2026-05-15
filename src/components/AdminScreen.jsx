@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { scenarioById, difficultyColor } from "../scenarios.js";
-import { resetAdmin } from "../lib/admin.js";
+import { resetAdmin, deleteSession } from "../lib/admin.js";
 
 function formatTimer(ms) {
   if (!ms || ms < 0) ms = 0;
@@ -10,6 +10,23 @@ function formatTimer(ms) {
     .padStart(2, "0");
   const s = (total % 60).toString().padStart(2, "0");
   return `${m}:${s}`;
+}
+
+function statusBadge(s) {
+  if (s.status === "ringing") return { label: "Ringing", cls: "bg-amber-700/40 text-amber-200 border-amber-700/60" };
+  if (s.status === "in-call") {
+    if (s.callerStatus === "speaking-dispatcher")
+      return { label: "Dispatcher", cls: "bg-emerald-700/40 text-emerald-200 border-emerald-700/60" };
+    if (s.callerStatus === "listening")
+      return { label: "🎙 Caller", cls: "bg-red-700/40 text-red-200 border-red-700/60" };
+    if (s.callerStatus === "thinking")
+      return { label: "…", cls: "bg-stone-700/60 text-stone-200 border-stone-600" };
+    return { label: "Live", cls: "bg-red-700/40 text-red-200 border-red-700/60" };
+  }
+  if (s.status === "ended") return { label: "Ended", cls: "bg-stone-700/60 text-stone-300 border-stone-600" };
+  if (s.status === "feedback-ready")
+    return { label: "Reviewed", cls: "bg-sky-700/40 text-sky-200 border-sky-700/60" };
+  return { label: "Idle", cls: "bg-stone-800 text-stone-400 border-stone-700" };
 }
 
 function parseFeedbackSection(text, label) {
@@ -38,18 +55,312 @@ function parseFeedbackList(text, label, nextLabels) {
   return items;
 }
 
-export default function AdminScreen() {
-  const [state, setState] = useState(null);
-  const [connected, setConnected] = useState(false);
-  const [now, setNow] = useState(Date.now());
+function SessionCard({ s, onSelect, now }) {
+  const scenario = s.scenarioId ? scenarioById(s.scenarioId) : null;
+  const badge = statusBadge(s);
+  const elapsedMs = s.startedAt
+    ? (s.endedAt || now) - s.startedAt
+    : 0;
+  const lastDispatcher = [...(s.messages || [])]
+    .reverse()
+    .find((m) => m.role === "assistant");
+  const lastCaller = [...(s.messages || [])]
+    .reverse()
+    .find((m) => m.role === "user");
+
+  return (
+    <button
+      onClick={onSelect}
+      className="text-left rounded-2xl bg-stone-900 border border-stone-800 hover:border-stone-600 transition p-5 flex flex-col gap-3 min-h-[260px]"
+    >
+      <div className="flex items-start gap-3">
+        <div className="text-4xl shrink-0" aria-hidden>
+          {scenario?.emoji || "📞"}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-stone-100 text-xl font-bold leading-tight truncate">
+            {scenario?.title || "Unknown scenario"}
+          </div>
+          <div className="text-stone-500 text-xs truncate">
+            {scenario?.location || "—"}
+          </div>
+        </div>
+        <span
+          className={`shrink-0 text-[10px] uppercase tracking-widest px-2 py-0.5 rounded border ${badge.cls}`}
+        >
+          {badge.label}
+        </span>
+      </div>
+
+      <div className="flex items-center gap-3 text-xs">
+        <span className="text-stone-400 font-mono tabular-nums">
+          {formatTimer(elapsedMs)}
+        </span>
+        {scenario && (
+          <span
+            className={`uppercase tracking-widest px-1.5 py-0.5 rounded border text-[10px] ${difficultyColor(
+              scenario.difficulty
+            )}`}
+          >
+            {scenario.difficulty}
+          </span>
+        )}
+        <span className="font-mono text-stone-500 truncate">
+          {s.emdCode || `→ ${s.expectedEmdCode || "—"}`}
+        </span>
+      </div>
+
+      <div className="space-y-1.5 text-sm flex-1 min-h-0 overflow-hidden">
+        {lastDispatcher && (
+          <div className="text-stone-300 line-clamp-2">
+            <span className="text-stone-500 text-[10px] uppercase tracking-wider mr-1">
+              Disp
+            </span>
+            {lastDispatcher.content}
+          </div>
+        )}
+        {lastCaller && (
+          <div className="text-red-200 line-clamp-2">
+            <span className="text-stone-500 text-[10px] uppercase tracking-wider mr-1">
+              Caller
+            </span>
+            {lastCaller.content}
+          </div>
+        )}
+        {s.interim && (
+          <div className="text-red-300/80 italic line-clamp-1">
+            {s.interim}…
+          </div>
+        )}
+        {!lastDispatcher && !lastCaller && !s.interim && (
+          <div className="text-stone-600 italic text-xs">
+            Waiting for the caller…
+          </div>
+        )}
+      </div>
+    </button>
+  );
+}
+
+function SessionDrawer({ session, onClose, now }) {
   const scrollRef = useRef(null);
+  const scenario = session.scenarioId ? scenarioById(session.scenarioId) : null;
+  const elapsedMs = session.startedAt
+    ? (session.endedAt || now) - session.startedAt
+    : 0;
+
+  const overall = parseFeedbackSection(session.feedback, "OVERALL");
+  const takeaway = parseFeedbackSection(session.feedback, "KEY TAKEAWAY");
+  const caseEntry = parseFeedbackSection(session.feedback, "CASE ENTRY COVERED");
+  const missed = parseFeedbackSection(session.feedback, "KEY QUESTIONS MISSED");
+  const didWell = parseFeedbackList(session.feedback, "WHAT YOU DID WELL", [
+    "WHAT TO REMEMBER NEXT TIME",
+    "KEY TAKEAWAY",
+    "EMD CODE",
+  ]);
+  const remember = parseFeedbackList(
+    session.feedback,
+    "WHAT TO REMEMBER NEXT TIME",
+    ["KEY TAKEAWAY", "EMD CODE", "CASE ENTRY COVERED", "KEY QUESTIONS MISSED"]
+  );
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
+  }, [session.messages, session.interim, session.feedback]);
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-40 flex" onClick={onClose}>
+      <div className="ml-auto w-full max-w-4xl bg-stone-950 border-l border-stone-800 flex flex-col" onClick={(e) => e.stopPropagation()}>
+        {/* Drawer header */}
+        <div className="px-6 py-4 border-b border-stone-800 flex items-center gap-4">
+          <div className="text-4xl">{scenario?.emoji || "📞"}</div>
+          <div className="flex-1 min-w-0">
+            <div className="text-stone-100 text-xl font-bold leading-tight">
+              {scenario?.title || "Unknown scenario"}
+            </div>
+            <div className="text-stone-500 text-xs">
+              {scenario?.location} · Session {session.id.slice(0, 6)}
+            </div>
+          </div>
+          <div className="text-stone-300 font-mono text-lg tabular-nums">
+            {formatTimer(elapsedMs)}
+          </div>
+          <button
+            onClick={() => {
+              if (confirm("Remove this session from the projector?")) {
+                deleteSession(session.id);
+                onClose();
+              }
+            }}
+            className="px-3 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 border border-stone-700 text-stone-300 text-sm"
+          >
+            Remove
+          </button>
+          <button
+            onClick={onClose}
+            className="px-3 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 border border-stone-700 text-stone-200 text-sm"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="flex-1 grid grid-cols-3 gap-5 overflow-hidden p-5">
+          {/* Transcript */}
+          <div className="col-span-2 rounded-2xl bg-stone-900 border border-stone-800 flex flex-col overflow-hidden">
+            <div className="px-5 py-3 border-b border-stone-800 text-stone-200 font-bold">
+              Transcript
+            </div>
+            <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+              {(session.messages || []).map((m, i) => (
+                <div
+                  key={i}
+                  className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-base leading-snug ${
+                      m.role === "user"
+                        ? "bg-red-600 text-white rounded-br-md"
+                        : "bg-stone-800 text-stone-100 rounded-bl-md"
+                    }`}
+                  >
+                    <div className="text-[10px] uppercase opacity-70 mb-0.5 tracking-widest">
+                      {m.role === "user" ? "Caller" : "Dispatcher"}
+                    </div>
+                    {m.content}
+                  </div>
+                </div>
+              ))}
+              {session.interim && (
+                <div className="flex justify-end">
+                  <div className="max-w-[85%] rounded-2xl rounded-br-md px-4 py-2.5 text-base bg-red-600/40 text-white italic">
+                    {session.interim}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Side panel */}
+          <div className="flex flex-col gap-3 overflow-y-auto">
+            {scenario && (
+              <div className="rounded-2xl bg-stone-900 border border-stone-800 p-4">
+                <div className="text-[10px] uppercase tracking-widest text-stone-500">
+                  Scenario
+                </div>
+                <div className="text-stone-200 text-sm mt-1 leading-snug">
+                  {scenario.brief}
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-2xl bg-stone-900 border border-stone-800 p-4">
+              <div className="text-[10px] uppercase tracking-widest text-sky-400">
+                Assigned EMD
+              </div>
+              <div className="font-mono text-stone-100 text-lg mt-1 break-words leading-tight">
+                {session.emdCode || "—"}
+              </div>
+              {scenario && (
+                <div className="text-stone-500 text-xs mt-1.5">
+                  Target:{" "}
+                  <span className="font-mono text-stone-300">
+                    {scenario.expectedDeterminant}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {overall && (
+              <div className="rounded-2xl bg-stone-900 border border-stone-800 p-4">
+                <div className="text-[10px] uppercase tracking-widest text-red-400 mb-1">
+                  Overall
+                </div>
+                <div className="text-stone-200 text-sm">{overall}</div>
+              </div>
+            )}
+
+            {didWell.length > 0 && (
+              <div className="rounded-2xl bg-stone-900 border border-stone-800 p-4">
+                <div className="text-[10px] uppercase tracking-widest text-emerald-400 mb-1.5">
+                  Did Well
+                </div>
+                <ul className="space-y-1 text-stone-200 text-sm">
+                  {didWell.map((x, i) => (
+                    <li key={i}>• {x}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {remember.length > 0 && (
+              <div className="rounded-2xl bg-stone-900 border border-stone-800 p-4">
+                <div className="text-[10px] uppercase tracking-widest text-amber-400 mb-1.5">
+                  Remember
+                </div>
+                <ul className="space-y-1 text-stone-200 text-sm">
+                  {remember.map((x, i) => (
+                    <li key={i}>• {x}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {(caseEntry || missed) && (
+              <div className="rounded-2xl bg-stone-900 border border-stone-800 p-4 space-y-2">
+                {caseEntry && (
+                  <div>
+                    <div className="text-[10px] uppercase tracking-widest text-emerald-400">
+                      Case Entry Covered
+                    </div>
+                    <div className="text-stone-200 text-sm">{caseEntry}</div>
+                  </div>
+                )}
+                {missed && (
+                  <div>
+                    <div className="text-[10px] uppercase tracking-widest text-amber-400">
+                      Key Questions Missed
+                    </div>
+                    <div className="text-stone-200 text-sm">{missed}</div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {takeaway && (
+              <div className="rounded-2xl bg-red-950/40 border border-red-800/60 p-4">
+                <div className="text-[10px] uppercase tracking-widest text-red-300">
+                  Key Takeaway
+                </div>
+                <div className="text-stone-50 text-base font-semibold leading-snug">
+                  {takeaway}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function AdminScreen() {
+  const [sessions, setSessions] = useState({});
+  const [connected, setConnected] = useState(false);
+  const [selectedId, setSelectedId] = useState(null);
+  const [now, setNow] = useState(Date.now());
+  const [filter, setFilter] = useState("active"); // active | all
 
   useEffect(() => {
     const es = new EventSource("/api/admin/stream");
     es.onopen = () => setConnected(true);
     es.onmessage = (e) => {
       try {
-        setState(JSON.parse(e.data));
+        const data = JSON.parse(e.data);
+        setSessions(data.sessions || {});
       } catch {
         // ignore
       }
@@ -63,60 +374,43 @@ export default function AdminScreen() {
     return () => clearInterval(t);
   }, []);
 
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    requestAnimationFrame(() => {
-      el.scrollTop = el.scrollHeight;
+  const list = useMemo(() => {
+    const arr = Object.values(sessions);
+    const filtered =
+      filter === "active"
+        ? arr.filter((s) => s.status !== "idle")
+        : arr;
+    return filtered.sort((a, b) => {
+      // Live calls first, then by most recent activity.
+      const liveOrder = (s) => {
+        if (s.status === "in-call") return 0;
+        if (s.status === "ringing") return 1;
+        if (s.status === "ended") return 2;
+        if (s.status === "feedback-ready") return 3;
+        return 4;
+      };
+      const la = liveOrder(a);
+      const lb = liveOrder(b);
+      if (la !== lb) return la - lb;
+      return (b.updatedAt || 0) - (a.updatedAt || 0);
     });
-  }, [state?.messages, state?.interim, state?.feedback]);
+  }, [sessions, filter]);
 
-  const scenario = state?.scenarioId ? scenarioById(state.scenarioId) : null;
+  const stats = useMemo(() => {
+    const arr = Object.values(sessions);
+    return {
+      total: arr.length,
+      live: arr.filter((s) => s.status === "in-call").length,
+      ended: arr.filter((s) => s.status === "ended" || s.status === "feedback-ready").length,
+    };
+  }, [sessions]);
 
-  const elapsedMs = useMemo(() => {
-    if (!state?.startedAt) return 0;
-    if (state.endedAt) return state.endedAt - state.startedAt;
-    return now - state.startedAt;
-  }, [state?.startedAt, state?.endedAt, now]);
-
-  const didWell = parseFeedbackList(state?.feedback, "WHAT YOU DID WELL", [
-    "WHAT TO REMEMBER NEXT TIME",
-    "KEY TAKEAWAY",
-    "EMD CODE",
-  ]);
-  const remember = parseFeedbackList(
-    state?.feedback,
-    "WHAT TO REMEMBER NEXT TIME",
-    ["KEY TAKEAWAY", "EMD CODE", "CASE ENTRY COVERED", "KEY QUESTIONS MISSED"]
-  );
-  const takeaway = parseFeedbackSection(state?.feedback, "KEY TAKEAWAY");
-  const overall = parseFeedbackSection(state?.feedback, "OVERALL");
-  const caseEntry = parseFeedbackSection(state?.feedback, "CASE ENTRY COVERED");
-  const missed = parseFeedbackSection(state?.feedback, "KEY QUESTIONS MISSED");
-
-  const statusLabel =
-    state?.status === "idle"
-      ? "Waiting for a call…"
-      : state?.status === "ringing"
-        ? "Connecting…"
-        : state?.status === "in-call"
-          ? state.callerStatus === "listening"
-            ? "🎙 Caller is speaking"
-            : state.callerStatus === "thinking"
-              ? "… Sending to dispatcher"
-              : state.callerStatus === "speaking-dispatcher"
-                ? "🔊 Dispatcher is speaking"
-                : "Live"
-          : state?.status === "ended"
-            ? "Call ended — reviewing"
-            : state?.status === "feedback-ready"
-              ? "Review complete"
-              : "—";
+  const selected = selectedId ? sessions[selectedId] : null;
 
   return (
     <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col">
       {/* Header */}
-      <div className="px-8 py-5 border-b border-stone-800 flex items-center justify-between">
+      <div className="px-8 py-5 border-b border-stone-800 flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-baseline gap-4">
           <div className="text-red-500 text-4xl font-black tracking-tight">
             911
@@ -126,18 +420,58 @@ export default function AdminScreen() {
               Suffolk County FRES Training
             </div>
             <div className="text-stone-400 text-sm">
-              Mock 911 Call Simulator · Instructor View
+              Mock 911 Simulator · Instructor Dashboard
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-6">
-          <div className="text-right">
-            <div className="text-stone-500 text-xs uppercase tracking-widest">
-              Status
+        <div className="flex items-center gap-6 flex-wrap">
+          <div className="flex items-center gap-5 text-sm">
+            <div>
+              <div className="text-stone-500 text-[10px] uppercase tracking-widest">
+                Total
+              </div>
+              <div className="text-stone-100 text-xl font-bold">
+                {stats.total}
+              </div>
             </div>
-            <div className="text-stone-100 text-xl font-semibold">
-              {statusLabel}
+            <div>
+              <div className="text-stone-500 text-[10px] uppercase tracking-widest">
+                Live
+              </div>
+              <div className="text-red-400 text-xl font-bold">
+                {stats.live}
+              </div>
             </div>
+            <div>
+              <div className="text-stone-500 text-[10px] uppercase tracking-widest">
+                Done
+              </div>
+              <div className="text-sky-300 text-xl font-bold">
+                {stats.ended}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setFilter("active")}
+              className={`px-3 py-1.5 rounded-lg text-sm border ${
+                filter === "active"
+                  ? "bg-red-600 border-red-500 text-white"
+                  : "bg-stone-800 border-stone-700 text-stone-300 hover:bg-stone-700"
+              }`}
+            >
+              Active
+            </button>
+            <button
+              onClick={() => setFilter("all")}
+              className={`px-3 py-1.5 rounded-lg text-sm border ${
+                filter === "all"
+                  ? "bg-red-600 border-red-500 text-white"
+                  : "bg-stone-800 border-stone-700 text-stone-300 hover:bg-stone-700"
+              }`}
+            >
+              All
+            </button>
           </div>
           <div
             className={`w-3 h-3 rounded-full ${
@@ -147,199 +481,48 @@ export default function AdminScreen() {
           />
           <button
             onClick={() => {
-              if (confirm("Reset the projector view?")) resetAdmin();
+              if (confirm("Clear ALL sessions from the projector?")) {
+                resetAdmin();
+              }
             }}
             className="px-3 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 border border-stone-700 text-stone-300 text-sm"
           >
-            Reset
+            Reset All
           </button>
         </div>
       </div>
 
-      {/* Body: scenario + transcript + sidebar */}
-      <div className="flex-1 grid grid-cols-12 gap-6 px-8 py-6">
-        {/* Left — scenario card */}
-        <div className="col-span-3 flex flex-col gap-4">
-          {scenario ? (
-            <div className="rounded-2xl bg-stone-900 border border-stone-800 p-6">
-              <div className="text-5xl mb-3">{scenario.emoji}</div>
-              <div className="text-stone-100 text-2xl font-bold leading-tight">
-                {scenario.title}
-              </div>
-              <div className="flex items-center gap-2 mt-2 flex-wrap">
-                <span
-                  className={`text-[11px] uppercase tracking-widest px-2 py-0.5 rounded border ${difficultyColor(
-                    scenario.difficulty
-                  )}`}
-                >
-                  {scenario.difficulty}
-                </span>
-                <span className="text-stone-400 text-xs">
-                  {scenario.location}
-                </span>
-              </div>
-              <div className="mt-4 text-stone-300 text-sm leading-snug">
-                {scenario.brief}
-              </div>
-              <div className="mt-4 pt-4 border-t border-stone-800">
-                <div className="text-[10px] uppercase tracking-widest text-stone-500">
-                  Target FRES Code
-                </div>
-                <div className="font-mono text-stone-100 text-lg mt-1">
-                  {scenario.expectedDeterminant}
-                </div>
-                <div className="text-stone-400 text-xs mt-0.5">
-                  Card {scenario.emdCard} — {scenario.emdName}
-                </div>
-                <div className="text-stone-400 text-xs mt-2 italic">
-                  {scenario.expectedName}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-2xl bg-stone-900 border border-stone-800 p-6 text-stone-500 text-sm">
-              No active scenario. The projector will update automatically when
-              a caller picks a scenario on their device.
-            </div>
-          )}
-        </div>
-
-        {/* Center — live transcript */}
-        <div className="col-span-6 rounded-2xl bg-stone-900 border border-stone-800 flex flex-col overflow-hidden">
-          <div className="px-6 py-4 border-b border-stone-800 flex items-center justify-between">
-            <div className="text-stone-200 text-lg font-bold">Live Transcript</div>
-            <div className="text-stone-400 font-mono text-lg tabular-nums">
-              {formatTimer(elapsedMs)}
-            </div>
+      {/* Grid */}
+      <div className="flex-1 px-8 py-6">
+        {list.length === 0 ? (
+          <div className="h-full flex items-center justify-center text-stone-500 text-lg">
+            Waiting for explorers to start a call…
+            <br />
+            <span className="text-stone-600 text-sm mt-2 block">
+              Have them open the main site on their phone and pick a scenario.
+            </span>
           </div>
-          <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
-            {(!state?.messages || state.messages.length === 0) && !state?.interim && (
-              <div className="text-stone-500 text-base italic">
-                Waiting for the caller…
-              </div>
-            )}
-            {state?.messages?.map((m, i) => (
-              <div
-                key={i}
-                className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={`max-w-[80%] rounded-2xl px-5 py-3 text-lg leading-snug ${
-                    m.role === "user"
-                      ? "bg-red-600 text-white rounded-br-md"
-                      : "bg-stone-800 text-stone-100 rounded-bl-md"
-                  }`}
-                >
-                  <div className="text-[10px] uppercase opacity-70 mb-1 tracking-widest">
-                    {m.role === "user" ? "Caller (Explorer)" : "Dispatcher"}
-                  </div>
-                  {m.content}
-                </div>
-              </div>
+        ) : (
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+            {list.map((s) => (
+              <SessionCard
+                key={s.id}
+                s={s}
+                onSelect={() => setSelectedId(s.id)}
+                now={now}
+              />
             ))}
-            {state?.interim && (
-              <div className="flex justify-end">
-                <div className="max-w-[80%] rounded-2xl rounded-br-md px-5 py-3 text-lg bg-red-600/40 text-white italic">
-                  {state.interim}
-                </div>
-              </div>
-            )}
           </div>
-        </div>
-
-        {/* Right — review / EMD */}
-        <div className="col-span-3 flex flex-col gap-4">
-          <div className="rounded-2xl bg-stone-900 border border-stone-800 p-5">
-            <div className="text-[10px] uppercase tracking-widest text-sky-400 mb-1">
-              Assigned EMD Code
-            </div>
-            <div className="font-mono text-stone-100 text-2xl break-words leading-tight">
-              {state?.emdCode || "—"}
-            </div>
-            {scenario && (
-              <div className="mt-3 text-stone-500 text-xs">
-                Expected:{" "}
-                <span className="font-mono text-stone-300">
-                  {scenario.expectedDeterminant}
-                </span>
-              </div>
-            )}
-          </div>
-
-          {overall && (
-            <div className="rounded-2xl bg-stone-900 border border-stone-800 p-5">
-              <div className="text-[10px] uppercase tracking-widest text-red-400 mb-1">
-                Overall
-              </div>
-              <div className="text-stone-100 text-base leading-snug">
-                {overall}
-              </div>
-            </div>
-          )}
-
-          {didWell.length > 0 && (
-            <div className="rounded-2xl bg-stone-900 border border-stone-800 p-5">
-              <div className="text-[10px] uppercase tracking-widest text-green-400 mb-2">
-                ✓ Did Well
-              </div>
-              <ul className="space-y-1.5">
-                {didWell.map((x, i) => (
-                  <li key={i} className="text-stone-200 text-sm leading-snug">
-                    • {x}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {remember.length > 0 && (
-            <div className="rounded-2xl bg-stone-900 border border-stone-800 p-5">
-              <div className="text-[10px] uppercase tracking-widest text-amber-400 mb-2">
-                ↑ Remember
-              </div>
-              <ul className="space-y-1.5">
-                {remember.map((x, i) => (
-                  <li key={i} className="text-stone-200 text-sm leading-snug">
-                    • {x}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {(caseEntry || missed) && (
-            <div className="rounded-2xl bg-stone-900 border border-stone-800 p-5 space-y-2">
-              {caseEntry && (
-                <div>
-                  <div className="text-[10px] uppercase tracking-widest text-emerald-400 mb-0.5">
-                    Case Entry Covered
-                  </div>
-                  <div className="text-stone-200 text-sm">{caseEntry}</div>
-                </div>
-              )}
-              {missed && (
-                <div>
-                  <div className="text-[10px] uppercase tracking-widest text-amber-400 mb-0.5">
-                    Key Questions Missed
-                  </div>
-                  <div className="text-stone-200 text-sm">{missed}</div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {takeaway && (
-            <div className="rounded-2xl bg-red-950/40 border border-red-800/60 p-5">
-              <div className="text-[10px] uppercase tracking-widest text-red-300 mb-1">
-                Key Takeaway
-              </div>
-              <div className="text-stone-50 text-base font-semibold leading-snug">
-                {takeaway}
-              </div>
-            </div>
-          )}
-        </div>
+        )}
       </div>
+
+      {selected && (
+        <SessionDrawer
+          session={selected}
+          onClose={() => setSelectedId(null)}
+          now={now}
+        />
+      )}
     </div>
   );
 }

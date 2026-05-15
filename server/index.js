@@ -5,7 +5,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { dispatcherSystemPrompt, feedbackPrompt, SCENARIO_META } from "./prompts.js";
-import { getState, patchState, resetState, subscribe, heartbeat } from "./state.js";
+import {
+  patchSession,
+  deleteSession,
+  resetAll,
+  subscribe,
+  heartbeat,
+  getAllSessions,
+} from "./sessions.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -14,7 +21,7 @@ const PORT = parseInt(process.env.PORT || "8787", 10);
 const MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-4-5";
 
 const app = express();
-app.use(compression());
+app.use(compression({ filter: (req) => !req.path.startsWith("/api/admin/stream") }));
 app.use(express.json({ limit: "256kb" }));
 
 function sanitizeMessages(messages) {
@@ -102,15 +109,22 @@ app.post("/api/chat", async (req, res) => {
 });
 
 app.post("/api/feedback", async (req, res) => {
-  const { scenarioId, messages } = req.body || {};
+  const { scenarioId, messages, sessionId } = req.body || {};
   if (!scenarioId) {
     return res.status(400).json({ error: "scenarioId is required" });
   }
   const history = sanitizeMessages(messages);
+
   if (history.length === 0) {
     const empty =
       "OVERALL: You ended the call before saying anything — give it another try!\nWHAT YOU DID WELL:\n- You started the call\nWHAT TO REMEMBER NEXT TIME:\n- Stay on the line and answer the dispatcher's questions\nKEY TAKEAWAY: Take a breath and tell the dispatcher what's happening.\nEMD CODE: Unable to code — insufficient info from caller";
-    patchState({ feedback: empty, emdCode: "Unable to code", status: "feedback-ready" });
+    if (sessionId) {
+      patchSession(sessionId, {
+        feedback: empty,
+        emdCode: "Unable to code",
+        status: "feedback-ready",
+      });
+    }
     return res.json({ feedback: empty });
   }
 
@@ -125,7 +139,13 @@ app.post("/api/feedback", async (req, res) => {
       userPrompt: feedbackPrompt(scenarioId, transcript),
     });
     const emdCode = extractEmdCode(feedback);
-    patchState({ feedback, emdCode, status: "feedback-ready" });
+    if (sessionId) {
+      patchSession(sessionId, {
+        feedback,
+        emdCode,
+        status: "feedback-ready",
+      });
+    }
     res.json({ feedback });
   } catch (err) {
     console.error("[feedback] error:", err);
@@ -137,40 +157,49 @@ app.post("/api/feedback", async (req, res) => {
 
 // ─── Admin / projector view ─────────────────────────────────────────────
 
-app.post("/api/admin/state", (req, res) => {
+const PATCHABLE = [
+  "status",
+  "scenarioId",
+  "startedAt",
+  "endedAt",
+  "messages",
+  "interim",
+  "callerStatus",
+  "feedback",
+  "emdCode",
+  "expectedEmdCode",
+  "callerName",
+];
+
+app.post("/api/admin/session/:id", (req, res) => {
+  const { id } = req.params;
+  if (!id || id.length > 64) {
+    return res.status(400).json({ error: "invalid session id" });
+  }
   const patch = req.body || {};
-  // Whitelist patchable fields.
-  const allowed = [
-    "status",
-    "scenarioId",
-    "startedAt",
-    "endedAt",
-    "messages",
-    "interim",
-    "callerStatus",
-    "feedback",
-    "emdCode",
-    "expectedEmdCode",
-  ];
   const clean = {};
-  for (const k of allowed) {
+  for (const k of PATCHABLE) {
     if (k in patch) clean[k] = patch[k];
   }
-  // If a new scenario was just chosen, look up the expected determinant.
   if (clean.scenarioId && SCENARIO_META[clean.scenarioId]) {
     clean.expectedEmdCode = SCENARIO_META[clean.scenarioId].expectedDeterminant;
   }
-  patchState(clean);
+  patchSession(id, clean);
+  res.json({ ok: true });
+});
+
+app.delete("/api/admin/session/:id", (req, res) => {
+  deleteSession(req.params.id);
   res.json({ ok: true });
 });
 
 app.post("/api/admin/reset", (_req, res) => {
-  resetState();
+  resetAll();
   res.json({ ok: true });
 });
 
 app.get("/api/admin/state", (_req, res) => {
-  res.json(getState());
+  res.json(getAllSessions());
 });
 
 app.get("/api/admin/stream", (req, res) => {
@@ -192,8 +221,7 @@ app.get("/api/admin/stream", (req, res) => {
   });
 });
 
-// Keep SSE connections alive through proxies.
-setInterval(heartbeat, 25000);
+setInterval(heartbeat, 25_000);
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, model: MODEL });

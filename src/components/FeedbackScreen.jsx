@@ -49,7 +49,7 @@ function parseFeedback(text) {
   return out;
 }
 
-export default function FeedbackScreen({ scenario, messages, onRestart }) {
+export default function FeedbackScreen({ scenario, messages, sessionId, onRestart }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [raw, setRaw] = useState("");
@@ -61,6 +61,7 @@ export default function FeedbackScreen({ scenario, messages, onRestart }) {
         const { feedback } = await fetchFeedback({
           scenarioId: scenario.id,
           messages,
+          sessionId,
         });
         if (!cancelled) {
           setRaw(feedback);
@@ -76,7 +77,7 @@ export default function FeedbackScreen({ scenario, messages, onRestart }) {
     return () => {
       cancelled = true;
     };
-  }, [scenario.id, messages]);
+  }, [scenario.id, messages, sessionId]);
 
   const parsed = parseFeedback(raw);
 
