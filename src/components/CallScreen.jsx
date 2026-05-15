@@ -109,8 +109,11 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
               setEndedReason("dispatched");
               playEndBeep();
               reportAdmin({ status: "ended", endedAt: Date.now(), callerStatus: null });
-              stopAndUploadRecording();
-              setTimeout(() => onEnd(messagesRef.current), 1200);
+              // Wait for the recording to finish uploading BEFORE transitioning to feedback,
+              // otherwise the in-flight POST gets aborted on unmount and admin never sees the recording.
+              stopAndUploadRecording().finally(() => {
+                setTimeout(() => onEnd(messagesRef.current), 600);
+              });
               return;
             }
             reportAdmin({ callerStatus: "listening" });
@@ -142,8 +145,14 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
 
   // Record the caller's actual voice to a webm blob and upload at end-of-call.
   const startRecording = useCallback(async () => {
-    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) return;
-    if (typeof MediaRecorder === "undefined") return;
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      console.warn("[recording] mediaDevices unavailable");
+      return;
+    }
+    if (typeof MediaRecorder === "undefined") {
+      console.warn("[recording] MediaRecorder unavailable");
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       recorderStreamRef.current = stream;
@@ -151,23 +160,33 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
         ? "audio/webm;codecs=opus"
         : MediaRecorder.isTypeSupported("audio/webm")
           ? "audio/webm"
-          : "";
+          : MediaRecorder.isTypeSupported("audio/mp4")
+            ? "audio/mp4"
+            : "";
       const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
       recorderChunksRef.current = [];
       rec.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) recorderChunksRef.current.push(e.data);
+        if (e.data && e.data.size > 0) {
+          recorderChunksRef.current.push(e.data);
+        }
       };
+      rec.onerror = (e) => console.warn("[recording] recorder error", e);
       rec.start(1000);
       recorderRef.current = rec;
+      console.log(`[recording] started with mime=${mime || "(default)"}`);
     } catch (e) {
-      // Recording is best-effort; don't block the call.
-      console.warn("Recording failed to start:", e);
+      console.warn("[recording] failed to start:", e);
     }
   }, []);
 
   const stopAndUploadRecording = useCallback(async () => {
     const rec = recorderRef.current;
-    if (!rec || rec.state === "inactive") return;
+    if (!rec || rec.state === "inactive") {
+      console.log("[recording] nothing to stop");
+      return;
+    }
+    // Ask for a final data chunk before stopping.
+    try { rec.requestData(); } catch {}
     await new Promise((resolve) => {
       rec.onstop = () => resolve();
       try {
@@ -182,16 +201,22 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
       // ignore
     }
     const blob = new Blob(recorderChunksRef.current, { type: "audio/webm" });
+    console.log(`[recording] captured ${blob.size} bytes`);
     const sid = getSessionId();
-    if (!sid || blob.size === 0) return;
+    if (!sid || blob.size === 0) {
+      console.warn("[recording] no session id or empty blob, skipping upload");
+      return;
+    }
     try {
-      await fetch(`/api/recording/${encodeURIComponent(sid)}`, {
+      const res = await fetch(`/api/recording/${encodeURIComponent(sid)}`, {
         method: "POST",
         headers: { "Content-Type": "audio/webm" },
         body: blob,
       });
+      const body = await res.json().catch(() => ({}));
+      console.log("[recording] upload result", res.status, body);
     } catch (e) {
-      console.warn("Recording upload failed:", e);
+      console.warn("[recording] upload failed:", e);
     }
   }, []);
 
@@ -261,8 +286,10 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
     stt.stop();
     playEndBeep();
     reportAdmin({ status: "ended", endedAt: Date.now(), callerStatus: null });
-    stopAndUploadRecording();
-    setTimeout(() => onEnd(messagesRef.current), 400);
+    // Same as the auto-end path — wait for the upload to finish before navigating.
+    stopAndUploadRecording().finally(() => {
+      setTimeout(() => onEnd(messagesRef.current), 300);
+    });
   }, [synth, stt, onEnd, stopAndUploadRecording]);
 
   const handleInterrupt = useCallback(() => {

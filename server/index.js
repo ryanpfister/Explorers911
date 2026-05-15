@@ -348,17 +348,22 @@ app.get("/api/admin/state", (_req, res) => {
 // Voice recording upload + serve — raw webm blobs, keyed by session id.
 app.post(
   "/api/recording/:id",
-  express.raw({ type: ["audio/webm", "audio/ogg", "audio/mp4", "audio/mpeg"], limit: "64mb" }),
+  // Accept any audio/* MIME; we always store as .webm on disk for simplicity.
+  express.raw({ type: "audio/*", limit: "64mb" }),
   (req, res) => {
     const { id } = req.params;
     if (!safeSessionId(id)) return res.status(400).json({ error: "invalid session id" });
-    if (!req.body || !req.body.length) return res.status(400).json({ error: "empty body" });
+    if (!req.body || !req.body.length) {
+      console.warn(`[recording] empty body for ${id}`);
+      return res.status(400).json({ error: "empty body" });
+    }
     const file = path.join(RECORDINGS_DIR, `${id}.webm`);
     fs.writeFile(file, req.body, (err) => {
       if (err) {
         console.error("[recording] write error:", err);
         return res.status(500).json({ error: "write failed" });
       }
+      console.log(`[recording] saved ${req.body.length} bytes for ${id}`);
       patchSession(id, { hasRecording: true });
       res.json({ ok: true, bytes: req.body.length });
     });
