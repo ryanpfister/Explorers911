@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSpeechRecognition } from "../hooks/useSpeechRecognition.js";
+import { useSpeechRecognition, speechRecognitionSupported } from "../hooks/useSpeechRecognition.js";
 import { useSpeechSynthesis } from "../hooks/useSpeechSynthesis.js";
 import { dispatcherReply } from "../lib/api.js";
 import { playEndBeep, playTypingLoop, playHoldTone, playConnectChirp, startAmbience, startCprMetronome } from "../lib/sound.js";
@@ -302,10 +302,20 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
     stt.start();
     // Subtle ambient noise underneath.
     ambienceStopRef.current = startAmbience();
-    // Make sure the mic recorder is actually running before the AI opens —
-    // otherwise the first second of the kid's voice gets lost.
+    // On Android, SpeechRecognition is fragile and easily disrupted by a
+    // parallel getUserMedia() call. Voice transcription is the critical
+    // feature — recording is nice-to-have — so skip the recorder on Android.
+    const isAndroid = typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent || "");
     (async () => {
-      await startRecording();
+      if (!isAndroid) {
+        // Small delay so STT has a moment to grab the mic first.
+        await new Promise((r) => setTimeout(r, 300));
+        await startRecording();
+      } else {
+        console.log("[recording] skipping on Android (would disrupt speech recognition)");
+        reportAdmin({ recordingState: "unsupported" });
+        setRecordingError("Recording is disabled on Android to keep voice working.");
+      }
       if (mode === "caller") {
         sendToAI([]);
       } else {
@@ -577,6 +587,33 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
       {recordingError && (
         <div className="bg-red-900/70 border-b border-red-700 text-red-100 px-4 py-1.5 text-[11px] text-center font-mono">
           ⚠ Voice recording not available: {recordingError}
+        </div>
+      )}
+
+      {!speechRecognitionSupported && (
+        <div className="bg-red-800 border-b border-red-600 text-white px-4 py-2 text-sm font-bold text-center">
+          ⚠ Your browser doesn't support voice. Use Chrome or Safari.
+        </div>
+      )}
+
+      {stt.error && (
+        <div className="bg-red-800 border-b border-red-600 text-white px-4 py-2 text-sm text-center">
+          🎤 Mic error: <span className="font-mono">{stt.error}</span>
+          {stt.error === "not-allowed" && (
+            <div className="text-[11px] font-normal mt-1">
+              Tap the lock icon in your address bar → allow Microphone, then refresh.
+            </div>
+          )}
+          {stt.error === "audio-capture" && (
+            <div className="text-[11px] font-normal mt-1">
+              Another app is using the mic. Close other apps and refresh.
+            </div>
+          )}
+          {stt.error === "network" && (
+            <div className="text-[11px] font-normal mt-1">
+              Voice needs internet. Check your connection.
+            </div>
+          )}
         </div>
       )}
 

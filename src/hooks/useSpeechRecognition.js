@@ -74,8 +74,11 @@ export function useSpeechRecognition({
 
     rec.onerror = (e) => {
       if (e.error === "no-speech" || e.error === "aborted") return;
+      console.warn("[stt] error:", e.error, e.message);
       setError(e.error);
     };
+
+    rec.onstart = () => setListening(true);
 
     rec.onend = () => {
       setListening(false);
