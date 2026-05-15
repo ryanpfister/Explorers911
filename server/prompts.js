@@ -293,6 +293,8 @@ YOUR ROLE — answer the dispatcher's questions like a real caller would. They a
 STYLE: 1-2 short sentences per response. Match the caller's age and emotional state. Use vocabulary a real kid/family member would.
 NEVER break character. NEVER mention training, simulation, or AI.
 
+When the dispatcher says they are sending help (e.g. "I'm dispatching units now" or "help is on the way"), react with a brief relieved acknowledgment ("Oh thank god — how long?", "Please hurry").
+
 When the dispatcher tells you units have arrived on scene (e.g. "I can hear sirens" or "crews are pulling up"), respond with a brief relieved thank-you ("Oh thank god, they're here, thank you!") and append [END_CALL] to end the call.`;
 }
 

@@ -361,6 +361,38 @@ app.get("/api/admin/state", (_req, res) => {
   res.json(getAllSessions());
 });
 
+// Manual dispatch trigger — used in Dispatcher mode where the kid (not the AI)
+// is the one running the call. They press a "Dispatch Units" button and we
+// generate the dispatch payload from the scenario + what the call has gathered.
+app.post("/api/dispatch/:id", express.json(), (req, res) => {
+  const { id } = req.params;
+  if (!safeSessionId(id)) return res.status(400).json({ error: "invalid id" });
+  const { scenarioId } = req.body || {};
+  if (!scenarioId || !SCENARIO_META[scenarioId]) {
+    return res.status(400).json({ error: "unknown scenarioId" });
+  }
+  const session = getSession(id);
+  if (session?.dispatch) {
+    return res.json({ dispatch: session.dispatch, already: true });
+  }
+  const meta = SCENARIO_META[scenarioId];
+  // Try to pluck the patient age from the call transcript.
+  const text = (session?.messages || []).map((m) => m.content).join(" ");
+  const ageMatch = text.match(/\b(\d{1,3})[- ]?(?:year[- ]?old|years old|yo)\b/i)
+    || text.match(/\bage\s+(\d{1,3})\b/i);
+  const age = ageMatch ? ageMatch[1] : "unknown";
+  const dispatch = {
+    department: "Middle Island Fire Department",
+    code: meta.expectedDeterminant,
+    nature: meta.emdName,
+    age,
+    location: "Middle Island",
+    timestamp: Date.now(),
+  };
+  patchSession(id, { dispatch });
+  res.json({ dispatch });
+});
+
 // Coach hint — instructor posts a hint that the kid's call screen will display.
 const coachHints = new Map(); // sessionId -> { text, ts }
 

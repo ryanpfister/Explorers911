@@ -47,6 +47,9 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
   const [uploadStatus, setUploadStatus] = useState(null); // "uploading" | "saved" | "failed" | null
   const [recordingActive, setRecordingActive] = useState(false);
   const [recordingError, setRecordingError] = useState(null);
+  const [dispatched, setDispatched] = useState(false);
+  const [arrivalCountdown, setArrivalCountdown] = useState(null);
+  const arrivalTimerRef = useRef(null);
   const agentRef = useRef(agent);
   useEffect(() => {
     agentRef.current = agent;
@@ -410,6 +413,70 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
     });
   }, [synth, stt, onEnd, stopAndUploadRecording]);
 
+  const handleArrival = useCallback(() => {
+    if (endedRef.current) return;
+    endedRef.current = true;
+    if (arrivalTimerRef.current) {
+      clearInterval(arrivalTimerRef.current);
+      arrivalTimerRef.current = null;
+    }
+    setEndedReason("arrived");
+    const synthetic = {
+      role: "assistant",
+      content: "Oh thank god, I hear them — they're pulling up now! Thank you so much!",
+      agent: "caller",
+    };
+    const finalMsgs = [...messagesRef.current, synthetic];
+    setMessages(finalMsgs);
+    reportAdmin({ messages: finalMsgs });
+    synth.speak(synthetic.content, {
+      onEnd: () => {
+        playEndBeep();
+        reportAdmin({ status: "ended", endedAt: Date.now(), callerStatus: null });
+        stopAndUploadRecording().finally(() => {
+          setTimeout(() => onEnd(finalMsgs), 700);
+        });
+      },
+    });
+  }, [synth, onEnd, stopAndUploadRecording]);
+
+  const handleDispatch = useCallback(async () => {
+    if (dispatched || endedRef.current) return;
+    setDispatched(true);
+    const sid = getSessionId();
+    if (sid) {
+      try {
+        await fetch(`/api/dispatch/${encodeURIComponent(sid)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scenarioId: scenario.id, callerName }),
+        });
+      } catch (e) {
+        console.warn("[dispatch] failed", e);
+      }
+    }
+    playHoldTone();
+    // 30s arrival countdown.
+    let secs = 30;
+    setArrivalCountdown(secs);
+    arrivalTimerRef.current = setInterval(() => {
+      secs -= 1;
+      setArrivalCountdown(secs);
+      if (secs <= 0) {
+        clearInterval(arrivalTimerRef.current);
+        arrivalTimerRef.current = null;
+        handleArrival();
+      }
+    }, 1000);
+  }, [dispatched, scenario.id, callerName, handleArrival]);
+
+  // Stop the arrival timer if the call ends some other way.
+  useEffect(() => {
+    return () => {
+      if (arrivalTimerRef.current) clearInterval(arrivalTimerRef.current);
+    };
+  }, []);
+
   const handleInterrupt = useCallback(() => {
     if (!synth.speaking) return;
     synth.stop();
@@ -634,6 +701,33 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
             active={stt.listening}
           />
         </div>
+
+        {mode === "dispatcher" && !endedReason && (
+          <div className="mb-4">
+            {!dispatched ? (
+              <button
+                onClick={handleDispatch}
+                className="w-full h-14 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-lg shadow-lg active:scale-[0.99] transition flex items-center justify-center gap-2"
+              >
+                🚒 Dispatch Units
+              </button>
+            ) : (
+              <div className="space-y-2">
+                <button
+                  onClick={handleArrival}
+                  className="w-full h-14 rounded-2xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-lg shadow-lg active:scale-[0.99] transition flex items-center justify-center gap-2"
+                >
+                  🚐 Units Arrived — End Call
+                </button>
+                {arrivalCountdown !== null && arrivalCountdown > 0 && (
+                  <div className="text-center text-stone-300 text-xs mt-1">
+                    Auto-arriving in <span className="font-mono font-bold text-amber-300">{arrivalCountdown}s</span> — keep giving instructions
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="flex justify-center">
           <button
