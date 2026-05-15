@@ -97,9 +97,9 @@ export function useSpeechSynthesis({ voiceSeed = 0 } = {}) {
     window.speechSynthesis.cancel();
     const utter = new SpeechSynthesisUtterance(text);
     if (voiceRef.current) utter.voice = voiceRef.current;
-    // Slightly slower + slightly lower pitch = professional dispatcher cadence
-    utter.rate = 0.95;
-    utter.pitch = 0.95;
+    // Natural dispatcher cadence — slightly slower than default but normal pitch.
+    utter.rate = 0.98;
+    utter.pitch = 1.0;
     utter.volume = 1.0;
     onEndRef.current = onEnd || null;
     utter.onstart = () => setSpeaking(true);

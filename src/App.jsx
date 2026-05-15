@@ -55,6 +55,8 @@ export default function App() {
   const [dispatcher, setDispatcher] = useState(null);
   const [pd, setPd] = useState(null);
   const [mode, setMode] = useState("caller");
+  const [callerName, setCallerName] = useState("");
+  const [difficulty, setDifficulty] = useState("medium");
   const sessionIdRef = useRef(null);
 
   const sttOk = speechRecognitionSupported;
@@ -65,7 +67,7 @@ export default function App() {
       ? "Your browser doesn't support speech playback."
       : permissionError;
 
-  const handlePick = async (s, pickedMode = "caller") => {
+  const handlePick = async (s, pickedMode = "caller", opts = {}) => {
     // Unlock audio + speech synth from this direct gesture (iOS Safari).
     primeAudio();
     primeSpeechSynthesis();
@@ -85,6 +87,8 @@ export default function App() {
     setSessionId(id);
 
     setMode(pickedMode);
+    if (opts.callerName !== undefined) setCallerName(opts.callerName);
+    if (opts.difficulty !== undefined) setDifficulty(opts.difficulty);
     setDispatcher(generateDispatcherPersona());
     setPd(generatePdPersona());
     setScenario(s);
@@ -129,6 +133,8 @@ export default function App() {
           dispatcher={dispatcher}
           pd={pd}
           mode={mode}
+          callerName={callerName}
+          difficulty={difficulty}
           onConnected={handleConnected}
           onCancel={handleCancel}
         />
@@ -139,6 +145,8 @@ export default function App() {
           dispatcher={dispatcher}
           pd={pd}
           mode={mode}
+          callerName={callerName}
+          difficulty={difficulty}
           onEnd={handleCallEnd}
         />
       )}

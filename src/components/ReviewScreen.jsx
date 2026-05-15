@@ -39,29 +39,38 @@ function parseFeedback(text, label) {
   return m ? m[1].trim() : "";
 }
 
-// Pick segments for one session: intro -> caller opener -> chief complaint exchange ->
-// FRES dispatch (with tones) -> a pre-arrival exchange -> coach summary.
+// Compact: intro -> recording snippet (or caller opener TTS) -> radio dispatch -> coach summary.
+// Tuned to be FAST so an instructor can rip through 15 calls quickly.
 function buildSegments(session, index, total) {
   const scenario = session.scenarioId ? scenarioById(session.scenarioId) : null;
   const segs = [];
+  const callerName = session.callerName ? ` — ${session.callerName}` : "";
 
   segs.push({
     kind: "intro",
-    title: `Call ${index + 1} of ${total}`,
+    title: `Call ${index + 1} of ${total}${callerName}`,
     subtitle: scenario?.title || "Unknown scenario",
     body: scenario?.brief || "",
-    speak: `Call ${index + 1} of ${total}. ${scenario?.title || ""}. ${scenario?.brief || ""}`,
+    speak: `Call ${index + 1}${callerName}. ${scenario?.title || ""}.`,
     voice: "narrator",
   });
 
   const messages = session.messages || [];
-  // First caller utterance after a FRES turn (the "real" call once FRES picked up)
   const firstFresIdx = messages.findIndex((m) => m.role === "assistant" && m.agent === "fres");
   const startIdx = firstFresIdx >= 0 ? firstFresIdx : 0;
   const callMsgs = messages.slice(startIdx);
-
   const firstCaller = callMsgs.find((m) => m.role === "user");
-  if (firstCaller) {
+
+  // Prefer playing the actual recording (first ~15s captures the kid's opening).
+  if (session.hasRecording && session.id) {
+    segs.push({
+      kind: "recording",
+      title: "Caller's voice (recording)",
+      body: firstCaller?.content || "",
+      audioUrl: `/api/recording/${encodeURIComponent(session.id)}`,
+      maxSeconds: 15,
+    });
+  } else if (firstCaller) {
     segs.push({
       kind: "caller",
       title: "Caller's opening",
@@ -71,19 +80,8 @@ function buildSegments(session, index, total) {
     });
   }
 
-  // First dispatcher reply after the opening
-  const firstDisp = callMsgs.find((m) => m.role === "assistant" && m.agent !== "pd");
-  if (firstDisp) {
-    segs.push({
-      kind: "dispatcher",
-      title: "Fire Rescue",
-      speak: firstDisp.content,
-      voice: "dispatcher",
-      body: firstDisp.content,
-    });
-  }
-
-  // Radio dispatch with tones
+  // Radio dispatch with tones (skip the full TTS announcement if we want to save time;
+  // keep a short version that still feels like a dispatch).
   if (session.dispatch) {
     segs.push({
       kind: "dispatch",
@@ -95,46 +93,29 @@ function buildSegments(session, index, total) {
     });
   }
 
-  // Last meaningful dispatcher line (likely a pre-arrival instruction or arrival)
-  const lastDisp = [...callMsgs].reverse().find((m) => m.role === "assistant" && m.agent !== "pd");
-  if (lastDisp && lastDisp !== firstDisp) {
-    segs.push({
-      kind: "dispatcher",
-      title: "Pre-arrival / wrap",
-      speak: lastDisp.content,
-      voice: "dispatcher",
-      body: lastDisp.content,
-    });
-  }
-
-  // Coach summary
+  // Coach summary — concise.
   if (session.feedback) {
     const overall = parseFeedback(session.feedback, "OVERALL");
     const takeaway = parseFeedback(session.feedback, "KEY TAKEAWAY");
     const code = session.emdCode || "Unable to code";
     const expected = scenario?.expectedDeterminant;
     const speakParts = [];
-    if (overall) speakParts.push(`Coach's review: ${overall}`);
+    if (overall) speakParts.push(overall);
     if (code) {
-      const expPart = expected ? ` Target was ${phoneticCode(expected)}.` : "";
-      speakParts.push(`EMD code assigned: ${phoneticCode(code.replace(/—.*/, "").trim())}.${expPart}`);
+      const expPart = expected ? ` Target ${phoneticCode(expected)}.` : "";
+      speakParts.push(`Code: ${phoneticCode(code.replace(/—.*/, "").trim())}.${expPart}`);
     }
-    if (takeaway) speakParts.push(`Key takeaway: ${takeaway}`);
+    if (takeaway) speakParts.push(takeaway);
     segs.push({
       kind: "summary",
       title: "Coach's review",
-      body: {
-        overall,
-        takeaway,
-        code,
-        expected,
-      },
+      body: { overall, takeaway, code, expected },
       speak: speakParts.join(" "),
       voice: "narrator",
     });
   }
 
-  segs.push({ kind: "pause", silent: true, durationMs: 1500 });
+  segs.push({ kind: "pause", silent: true, durationMs: 400 });
   return segs;
 }
 
@@ -230,38 +211,60 @@ export default function ReviewScreen({ sessions, onClose }) {
       setIdx((i) => Math.min(i + 1, flat.length));
     }
 
+    let audioEl = null;
+
     async function run() {
       if (seg.silent) {
-        timer = setTimeout(advance, seg.durationMs || 1200);
+        timer = setTimeout(advance, seg.durationMs || 400);
+        return;
+      }
+      // Play actual voice recording from the kid's call.
+      if (seg.kind === "recording" && seg.audioUrl) {
+        audioEl = new Audio(seg.audioUrl);
+        audioEl.volume = 1.0;
+        audioEl.playbackRate = 1.0;
+        const maxMs = (seg.maxSeconds || 12) * 1000;
+        const finish = () => { if (!cancelled) advance(); };
+        audioEl.onended = finish;
+        audioEl.onerror = finish;
+        try {
+          await audioEl.play();
+        } catch {
+          finish();
+          return;
+        }
+        timer = setTimeout(() => {
+          try { audioEl.pause(); } catch {}
+          finish();
+        }, maxMs);
         return;
       }
       // Optional alert tones before this segment.
       if (seg.tones) {
         const waitMs = playAlertTones();
-        await new Promise((r) => { timer = setTimeout(r, waitMs + 250); });
+        await new Promise((r) => { timer = setTimeout(r, waitMs + 150); });
         if (cancelled) return;
       }
       if (!seg.speak || typeof window === "undefined" || !window.speechSynthesis) {
-        timer = setTimeout(advance, 2200);
+        timer = setTimeout(advance, 1200);
         return;
       }
       try { window.speechSynthesis.cancel(); } catch {}
       const u = new SpeechSynthesisUtterance(seg.speak);
       const v = voicesRef.current[seg.voice] || voicesRef.current.narrator;
       if (v) u.voice = v;
-      // Caller is more rushed/higher; dispatcher steady; narrator clean.
-      if (seg.voice === "caller") { u.rate = 1.05; u.pitch = 1.15; }
-      else if (seg.voice === "dispatcher") { u.rate = 1.05; u.pitch = 0.95; }
-      else { u.rate = 1.05; u.pitch = 1.0; }
+      // Faster cadence so we can rip through ~15 calls quickly.
+      if (seg.voice === "caller") { u.rate = 1.2; u.pitch = 1.15; }
+      else if (seg.voice === "dispatcher") { u.rate = 1.2; u.pitch = 1.0; }
+      else { u.rate = 1.25; u.pitch = 1.0; }
       u.volume = 1.0;
       u.onend = () => { if (!cancelled) advance(); };
       u.onerror = () => { if (!cancelled) advance(); };
-      // Small delay so cancellation settles cleanly.
       timer = setTimeout(() => {
         if (!cancelled) {
           try { window.speechSynthesis.speak(u); } catch { advance(); }
         }
-      }, 80);
+      }, 50);
     }
 
     run();
@@ -269,6 +272,7 @@ export default function ReviewScreen({ sessions, onClose }) {
       cancelled = true;
       if (timer) clearTimeout(timer);
       try { window.speechSynthesis?.cancel(); } catch {}
+      try { if (audioEl) audioEl.pause(); } catch {}
     };
     return () => cancelRef.current();
   }, [idx, playing, flat]);
@@ -325,7 +329,11 @@ export default function ReviewScreen({ sessions, onClose }) {
           <button onClick={() => setPlaying((p) => !p)} className={`px-4 py-2 rounded-lg border font-bold ${playing ? "bg-amber-700 border-amber-600 hover:bg-amber-600" : "bg-emerald-700 border-emerald-600 hover:bg-emerald-600"}`}>
             {playing ? "⏸ Pause" : "▶ Resume"}
           </button>
-          <button onClick={skipSession} className="px-3 py-2 rounded-lg bg-stone-800 hover:bg-stone-700 border border-stone-700 text-sm">Next call ›</button>
+          <button
+            onClick={() => { try { cancelRef.current(); } catch {} setIdx((i) => Math.min(i + 1, flat.length)); }}
+            className="px-3 py-2 rounded-lg bg-stone-800 hover:bg-stone-700 border border-stone-700 text-sm"
+          >Skip ›</button>
+          <button onClick={skipSession} className="px-3 py-2 rounded-lg bg-stone-800 hover:bg-stone-700 border border-stone-700 text-sm">Next call ››</button>
           <button onClick={handleClose} className="ml-4 px-4 py-2 rounded-lg bg-red-700 hover:bg-red-600 border border-red-600 text-sm font-bold">
             Exit Review
           </button>
@@ -372,6 +380,7 @@ function ReviewStage({ item }) {
   const kindStyles = {
     intro: { color: "text-stone-200", accent: "bg-stone-700", label: "Scenario" },
     caller: { color: "text-red-200", accent: "bg-red-700", label: "Caller" },
+    recording: { color: "text-red-200", accent: "bg-red-700", label: "🎙️ Recording" },
     dispatcher: { color: "text-sky-200", accent: "bg-sky-700", label: "Fire Rescue" },
     dispatch: { color: "text-amber-200", accent: "bg-amber-700", label: "📻 Radio Dispatch" },
     summary: { color: "text-emerald-200", accent: "bg-emerald-700", label: "Coach's Review" },
@@ -404,6 +413,20 @@ function ReviewStage({ item }) {
         <div className={`rounded-3xl bg-stone-900 border border-stone-800 p-10 ${style.color}`}>
           <div className="text-stone-500 text-xs uppercase tracking-widest mb-3">{segment.title}</div>
           <div className="text-3xl font-semibold leading-snug">{segment.body}</div>
+        </div>
+      )}
+
+      {segment.kind === "recording" && (
+        <div className="rounded-3xl bg-red-950/40 border border-red-800/60 p-10">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="text-4xl animate-pulse">🎙️</div>
+            <div className="text-red-300 text-xs uppercase tracking-widest font-bold">
+              {segment.title} · live from the call
+            </div>
+          </div>
+          {segment.body && (
+            <div className="text-red-100 text-2xl leading-snug italic">"{segment.body}"</div>
+          )}
         </div>
       )}
 

@@ -161,11 +161,17 @@ const TOWN_DEPT = {
   "Robert Moses State Park": "Babylon Fire Department",
 };
 
-export function pdDispatcherSystemPrompt(scenarioId, pd) {
+export function pdDispatcherSystemPrompt(scenarioId, pd, callerName) {
   const meta = SCENARIO_META[scenarioId];
   const brief = meta?.brief || "An unspecified emergency.";
 
+  const nameLine = callerName
+    ? `The caller's first name is ${callerName} — you may address them by name once if it feels natural.`
+    : "";
+
   return `You are a Suffolk County Police Department 911 dispatcher at the Yaphank PSAP. Your name is Officer ${pd?.lastName || "Diaz"}, badge ${pd?.badge || "1742"}. A 911 call has come in.
+
+${nameLine}
 
 This is a TRAINING SIMULATION for a Suffolk County fire-department youth explorer (ages 12-17) practicing how to make a 911 call.
 
@@ -183,16 +189,32 @@ Turn 2: Determine if they need police, fire, or EMS.
 
 If the caller doesn't say what's happening on Turn 1, ask once: "Is this for police, fire, or EMS?" then transfer.
 
-STYLE: Brisk, professional. ONE sentence per response. Do NOT ask EMD questions — that's Fire Rescue's job.
+STYLE: Brisk, professional. ONE sentence per response. Use natural speech — contractions ("I'm", "you're", "I'll"), occasional acknowledgments ("Okay", "Got it"). Do NOT ask EMD questions — that's Fire Rescue's job.
 NEVER mention this is training. NEVER break character.
 ALWAYS append [TRANSFER] at the end of your transfer line.`;
 }
 
-export function callerSystemPrompt(scenarioId) {
+export function callerSystemPrompt(scenarioId, opts = {}) {
   const meta = SCENARIO_META[scenarioId];
   const brief = meta?.brief || "An unspecified emergency.";
+  const { difficulty = "medium", callerName } = opts;
+
+  const nameLine = callerName
+    ? `Your name is ${callerName}. Give it if the dispatcher asks.`
+    : "Make up a realistic first name for yourself if the dispatcher asks.";
+
+  const emotionLine =
+    difficulty === "easy"
+      ? "EMOTION LEVEL: Worried but composed. Answer questions clearly the first time."
+      : difficulty === "hard"
+        ? "EMOTION LEVEL: PANICKED and chaotic. Sometimes you can't focus on the question and blurt out other details. Repeat yourself. Lose track. Cry/yell occasionally (\"oh my god, please hurry!\"). Make the dispatcher work to keep you on protocol — but still answer eventually."
+        : "EMOTION LEVEL: Scared and emotional. Answer questions but occasionally panic or trail off. Real-kid energy.";
 
   return `You are a panicked caller (a kid or family member) who has just been transferred from Suffolk County Police to Suffolk County Fire Rescue. The Fire Rescue dispatcher just picked up the line.
+
+${nameLine}
+
+${emotionLine}
 
 This is a TRAINING SIMULATION — the "dispatcher" you're talking to is actually a youth explorer (ages 12-17) practicing how to BE a 911 dispatcher.
 
@@ -216,6 +238,11 @@ When the dispatcher tells you units have arrived on scene (e.g. "I can hear sire
 }
 
 export function dispatcherSystemPrompt(scenarioId, dispatcher, opts = {}) {
+  const { callerName } = opts;
+  const callerNameLine = callerName
+    ? `THE CALLER'S NAME: ${callerName}. Use it naturally 1-2 times during the call (e.g. "Okay, ${callerName}, stay with me." or "${callerName}, are you safe right now?"). Don't overuse it.`
+    : "";
+
   const meta = SCENARIO_META[scenarioId];
   const brief = meta?.brief || "An unspecified emergency.";
   const cardLine = meta
@@ -303,8 +330,17 @@ ${caseEntryNote}
    - Append [END_CALL] to this final line.
    - DO NOT drag the call out. End it once units are on scene.
 
+${callerNameLine}
+
+NATURAL CADENCE — write the way a real dispatcher actually talks, not like a textbook:
+- Use contractions: "I'm", "you're", "we'll", "don't", "I've", "let's".
+- Brief acknowledgments before the next question: "Okay." / "Alright." / "Got it." / "Mm-hmm."
+- Occasional reassurance: "You're doing great." / "Stay with me." / "Hang in there."
+- Vary sentence length — some short ("Okay."), some longer.
+- Sound human. NOT robotic. NOT formal.
+
 STYLE RULES:
-- ONE question or instruction per response. 1-2 short sentences max.
+- ONE question or instruction per response. 1-2 short sentences max (an acknowledgment + the next ask).
 - Calm, supportive, professional. Match a real dispatcher's cadence.
 - NEVER read EMD codes, card numbers, or determinant letters aloud.
 - If they panic or freeze: "You're doing great — take a breath. [re-ask the same question]"

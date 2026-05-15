@@ -24,7 +24,7 @@ function PhoneIcon({ className = "w-8 h-8" }) {
   );
 }
 
-export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", onEnd }) {
+export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", callerName, difficulty = "medium", onEnd }) {
   const [messages, setMessages] = useState([]);
   const [thinking, setThinking] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -33,6 +33,9 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
   const [agent, setAgent] = useState(mode === "dispatcher" ? "caller" : "pd");
   const [showTranscript, setShowTranscript] = useState(false);
   const endedRef = useRef(false);
+  const recorderRef = useRef(null);
+  const recorderChunksRef = useRef([]);
+  const recorderStreamRef = useRef(null);
   const agentRef = useRef(agent);
   useEffect(() => {
     agentRef.current = agent;
@@ -63,6 +66,8 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
           agent: agentRef.current,
           mode,
           sessionId: getSessionId(),
+          callerName,
+          difficulty,
         });
         const isFinal = reply.includes(END_TAG);
         const isTransfer = reply.includes(TRANSFER_TAG);
@@ -104,6 +109,7 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
               setEndedReason("dispatched");
               playEndBeep();
               reportAdmin({ status: "ended", endedAt: Date.now(), callerStatus: null });
+              stopAndUploadRecording();
               setTimeout(() => onEnd(messagesRef.current), 1200);
               return;
             }
@@ -118,7 +124,7 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
         sttRef.current?.resume();
       }
     },
-    [scenario.id, synth, onEnd, dispatcher, pd, mode]
+    [scenario.id, synth, onEnd, dispatcher, pd, mode, callerName, difficulty]
   );
 
   const handleFinalTranscript = useCallback(
@@ -134,6 +140,61 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
   const stt = useSpeechRecognition({ onFinalResult: handleFinalTranscript });
   sttRef.current = stt;
 
+  // Record the caller's actual voice to a webm blob and upload at end-of-call.
+  const startRecording = useCallback(async () => {
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) return;
+    if (typeof MediaRecorder === "undefined") return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recorderStreamRef.current = stream;
+      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm")
+          ? "audio/webm"
+          : "";
+      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      recorderChunksRef.current = [];
+      rec.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) recorderChunksRef.current.push(e.data);
+      };
+      rec.start(1000);
+      recorderRef.current = rec;
+    } catch (e) {
+      // Recording is best-effort; don't block the call.
+      console.warn("Recording failed to start:", e);
+    }
+  }, []);
+
+  const stopAndUploadRecording = useCallback(async () => {
+    const rec = recorderRef.current;
+    if (!rec || rec.state === "inactive") return;
+    await new Promise((resolve) => {
+      rec.onstop = () => resolve();
+      try {
+        rec.stop();
+      } catch {
+        resolve();
+      }
+    });
+    try {
+      recorderStreamRef.current?.getTracks().forEach((t) => t.stop());
+    } catch {
+      // ignore
+    }
+    const blob = new Blob(recorderChunksRef.current, { type: "audio/webm" });
+    const sid = getSessionId();
+    if (!sid || blob.size === 0) return;
+    try {
+      await fetch(`/api/recording/${encodeURIComponent(sid)}`, {
+        method: "POST",
+        headers: { "Content-Type": "audio/webm" },
+        body: blob,
+      });
+    } catch (e) {
+      console.warn("Recording upload failed:", e);
+    }
+  }, []);
+
   useEffect(() => {
     playConnectChirp();
     reportAdmin({
@@ -141,21 +202,32 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
       scenarioId: scenario.id,
       mode,
       agent,
+      callerName: callerName || null,
+      difficulty,
       startedAt: Date.now(),
       messages: [],
       interim: "",
       feedback: null,
       emdCode: null,
       dispatch: null,
+      hasRecording: false,
       endedAt: null,
     });
     stt.start();
+    startRecording();
     if (mode === "caller") {
       sendToAI([]);
     } else {
       reportAdmin({ callerStatus: "listening" });
     }
-    return () => stt.stop();
+    return () => {
+      stt.stop();
+      // Best-effort: stop the recorder if user navigates away without End Call.
+      if (recorderRef.current && recorderRef.current.state !== "inactive") {
+        try { recorderRef.current.stop(); } catch {}
+      }
+      try { recorderStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch {}
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -189,8 +261,9 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
     stt.stop();
     playEndBeep();
     reportAdmin({ status: "ended", endedAt: Date.now(), callerStatus: null });
+    stopAndUploadRecording();
     setTimeout(() => onEnd(messagesRef.current), 400);
-  }, [synth, stt, onEnd]);
+  }, [synth, stt, onEnd, stopAndUploadRecording]);
 
   const handleInterrupt = useCallback(() => {
     if (!synth.speaking) return;

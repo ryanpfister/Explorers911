@@ -6,6 +6,8 @@ export async function dispatcherReply({
   agent = "fres",
   mode = "caller",
   sessionId,
+  callerName,
+  difficulty = "medium",
 }) {
   const res = await fetch("/api/chat", {
     method: "POST",
@@ -18,6 +20,8 @@ export async function dispatcherReply({
       agent,
       mode,
       sessionId,
+      callerName,
+      difficulty,
     }),
   });
   if (!res.ok) {

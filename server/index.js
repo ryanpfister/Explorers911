@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import compression from "compression";
 import path from "node:path";
+import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import {
@@ -25,6 +26,12 @@ const ROOT = path.resolve(__dirname, "..");
 
 const PORT = parseInt(process.env.PORT || "8787", 10);
 const MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-4-5";
+const RECORDINGS_DIR = path.join(ROOT, "recordings");
+fs.mkdirSync(RECORDINGS_DIR, { recursive: true });
+
+function safeSessionId(id) {
+  return /^[A-Za-z0-9_-]{1,64}$/.test(id);
+}
 
 const app = express();
 app.use(compression({ filter: (req) => !req.path.startsWith("/api/admin/stream") }));
@@ -173,6 +180,8 @@ app.post("/api/chat", async (req, res) => {
     agent = "fres",
     mode = "caller",
     sessionId,
+    callerName,
+    difficulty = "medium",
   } = req.body || {};
   if (!scenarioId) {
     return res.status(400).json({ error: "scenarioId is required" });
@@ -181,12 +190,12 @@ app.post("/api/chat", async (req, res) => {
 
   let systemPrompt;
   if (mode === "dispatcher") {
-    systemPrompt = callerSystemPrompt(scenarioId);
+    systemPrompt = callerSystemPrompt(scenarioId, { difficulty, callerName });
   } else if (agent === "pd") {
-    systemPrompt = pdDispatcherSystemPrompt(scenarioId, pd);
+    systemPrompt = pdDispatcherSystemPrompt(scenarioId, pd, callerName);
   } else {
     const postTransfer = history.some((m) => m.agent === "pd");
-    systemPrompt = dispatcherSystemPrompt(scenarioId, dispatcher, { postTransfer });
+    systemPrompt = dispatcherSystemPrompt(scenarioId, dispatcher, { postTransfer, callerName });
   }
 
   try {
@@ -287,6 +296,8 @@ const PATCHABLE = [
   "mode",
   "dispatch",
   "agent",
+  "difficulty",
+  "hasRecording",
 ];
 
 app.post("/api/admin/session/:id", (req, res) => {
@@ -313,11 +324,49 @@ app.delete("/api/admin/session/:id", (req, res) => {
 
 app.post("/api/admin/reset", (_req, res) => {
   resetAll();
+  // Also drop recordings.
+  try {
+    for (const f of fs.readdirSync(RECORDINGS_DIR)) {
+      if (f.endsWith(".webm")) fs.unlinkSync(path.join(RECORDINGS_DIR, f));
+    }
+  } catch (e) {
+    console.error("[recording] reset cleanup error:", e);
+  }
   res.json({ ok: true });
 });
 
 app.get("/api/admin/state", (_req, res) => {
   res.json(getAllSessions());
+});
+
+// Voice recording upload + serve — raw webm blobs, keyed by session id.
+app.post(
+  "/api/recording/:id",
+  express.raw({ type: ["audio/webm", "audio/ogg", "audio/mp4", "audio/mpeg"], limit: "64mb" }),
+  (req, res) => {
+    const { id } = req.params;
+    if (!safeSessionId(id)) return res.status(400).json({ error: "invalid session id" });
+    if (!req.body || !req.body.length) return res.status(400).json({ error: "empty body" });
+    const file = path.join(RECORDINGS_DIR, `${id}.webm`);
+    fs.writeFile(file, req.body, (err) => {
+      if (err) {
+        console.error("[recording] write error:", err);
+        return res.status(500).json({ error: "write failed" });
+      }
+      patchSession(id, { hasRecording: true });
+      res.json({ ok: true, bytes: req.body.length });
+    });
+  }
+);
+
+app.get("/api/recording/:id", (req, res) => {
+  const { id } = req.params;
+  if (!safeSessionId(id)) return res.status(400).end();
+  const file = path.join(RECORDINGS_DIR, `${id}.webm`);
+  fs.access(file, fs.constants.R_OK, (err) => {
+    if (err) return res.status(404).end();
+    res.sendFile(file);
+  });
 });
 
 app.get("/api/admin/stream", (req, res) => {

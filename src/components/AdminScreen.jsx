@@ -41,6 +41,38 @@ function buildAnnouncementText(d) {
   return `${d.department || "Suffolk County Fire Rescue"}, on the air with an EMS alarm${codePart}${nature}${ageStr} at ${d.location || "an unknown location"}. Time is now ${formatDispatchTime(d.timestamp)}.`;
 }
 
+// Heuristic EMD coverage detection — scans all transcript messages and flags which protocol steps were covered.
+const EMD_STEPS = [
+  { id: "location", label: "Location", icon: "📍",
+    test: (caller) => /\b(\d+ ?\w+ (street|st|ave|avenue|road|rd|blvd|lane|ln|dr|drive|way|highway|hwy|park|court|ct)|patchogue|bay shore|smithtown|brentwood|sayville|riverhead|babylon|hauppauge|east islip|huntington|commack|middle island|holbrook|west islip|selden|mastic|robert moses|main\b|\bcorner of\b|\bintersection of\b)/i.test(caller) },
+  { id: "callback", label: "Callback #", icon: "📞",
+    test: (caller) => /\b\d{3}[-. ]?\d{3}[-. ]?\d{4}\b|six three one|callback|phone (?:number|is)/i.test(caller) },
+  { id: "complaint", label: "Chief complaint", icon: "🆘",
+    test: (caller) => /\b(can't breathe|not breathing|choking|chest pain|bleeding|cut|burning|fire|smoke|drowning|stroke|seizure|seizing|unconscious|passed out|collapsed|heart attack|allergic|stung|crash|hit by|hit and run|wreck|fell|fall|epi|diabetic|asthma|inhaler|co|carbon monoxide)/i.test(caller) },
+  { id: "age", label: "Age", icon: "🎂",
+    test: (caller) => /\b(\d{1,3})[- ]?(year[- ]old|years old|yo)\b|she'?s (?:\d{1,3})|he'?s (?:\d{1,3})|grandma|grandpa|sister|brother|mom|mother|dad|father|friend|teammate|aunt|uncle/i.test(caller) },
+  { id: "awake", label: "Awake?", icon: "👁",
+    test: (caller, dispatcher) => /\b(awake|conscious|responsive|talking|alert|won'?t wake|unresponsive|out cold|knocked out|passed out|unconscious|not moving|not respond)/i.test(caller) || /\bawake|conscious|responsive\b/i.test(dispatcher) },
+  { id: "breathing", label: "Breathing?", icon: "🫁",
+    test: (caller, dispatcher) => /\b(breath|wheezing|gasping|not breathing|can'?t breathe|short of breath|labored)/i.test(caller) || /\bbreathing\b/i.test(dispatcher) },
+  { id: "dispatch", label: "Units dispatched", icon: "🚒",
+    test: (_caller, dispatcher) => /\b(sending|dispatching|dispatched|on the way|on their way|en route|responding|heading your way|got .+ (?:fire|ems|ambulance|medic))/i.test(dispatcher) },
+  { id: "prearrival", label: "Pre-arrival inst.", icon: "💉",
+    test: (_caller, dispatcher) => /\b(compress|cpr|push down|stayin'? alive|direct pressure|press (?:a |the )?(?:cloth|towel)|back blow|epipen|cool water|get outside|don'?t go back|don'?t move|keep (?:them|her|him) still)/i.test(dispatcher) },
+];
+
+function computeEmdCoverage(messages) {
+  const callerText = (messages || [])
+    .filter((m) => m.role === "user")
+    .map((m) => m.content)
+    .join(" ");
+  const dispatcherText = (messages || [])
+    .filter((m) => m.role === "assistant")
+    .map((m) => m.content)
+    .join(" ");
+  return EMD_STEPS.map((s) => ({ ...s, done: s.test(callerText, dispatcherText) }));
+}
+
 function speakAnnouncement(text) {
   if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
   window.speechSynthesis.cancel();
@@ -145,6 +177,8 @@ function SessionCard({ s, onSelect, now }) {
   const elapsedMs = s.startedAt
     ? (s.endedAt || now) - s.startedAt
     : 0;
+  const coverage = computeEmdCoverage(s.messages);
+  const doneCount = coverage.filter((c) => c.done).length;
   const lastDispatcher = [...(s.messages || [])]
     .reverse()
     .find((m) => m.role === "assistant");
@@ -189,9 +223,32 @@ function SessionCard({ s, onSelect, now }) {
             {scenario.difficulty}
           </span>
         )}
+        {s.callerName && (
+          <span className="text-stone-300 truncate">{s.callerName}</span>
+        )}
         <span className="font-mono text-stone-500 truncate">
           {s.emdCode || `→ ${s.expectedEmdCode || "—"}`}
         </span>
+      </div>
+
+      <div className="grid grid-cols-4 gap-1 text-[10px]">
+        {coverage.map((c) => (
+          <div
+            key={c.id}
+            className={`rounded border px-1.5 py-1 flex items-center gap-1 truncate ${
+              c.done
+                ? "bg-emerald-900/40 border-emerald-700/60 text-emerald-200"
+                : "bg-stone-800/60 border-stone-700/60 text-stone-500"
+            }`}
+            title={c.label}
+          >
+            <span>{c.done ? "✓" : c.icon}</span>
+            <span className="truncate">{c.label}</span>
+          </div>
+        ))}
+      </div>
+      <div className="text-[10px] text-stone-500">
+        EMD coverage {doneCount}/{coverage.length}
       </div>
 
       <div className="space-y-1.5 text-sm flex-1 min-h-0 overflow-hidden">

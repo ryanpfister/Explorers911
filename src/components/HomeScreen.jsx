@@ -4,6 +4,8 @@ import { SCENARIOS, CATEGORIES, difficultyColor } from "../scenarios.js";
 export default function HomeScreen({ onPick, supportWarning }) {
   const [category, setCategory] = useState("all");
   const [mode, setMode] = useState("caller");
+  const [callerName, setCallerName] = useState("");
+  const [difficulty, setDifficulty] = useState("medium");
 
   const filtered = useMemo(() => {
     if (category === "all") return SCENARIOS;
@@ -51,6 +53,50 @@ export default function HomeScreen({ onPick, supportWarning }) {
         </button>
       </div>
 
+      <div className="w-full mb-3">
+        <label className="block text-stone-400 text-[11px] uppercase tracking-widest mb-1.5">
+          Your first name (optional)
+        </label>
+        <input
+          type="text"
+          value={callerName}
+          onChange={(e) => setCallerName(e.target.value.slice(0, 24))}
+          placeholder="e.g. Sam"
+          className="w-full rounded-xl bg-stone-800 border border-stone-700 text-stone-100 px-3 py-2.5 text-base placeholder:text-stone-500 focus:outline-none focus:border-stone-500"
+          autoComplete="given-name"
+        />
+      </div>
+
+      <div className="w-full mb-4">
+        <div className="text-stone-400 text-[11px] uppercase tracking-widest mb-1.5">
+          Difficulty
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { id: "easy", label: "Easy", desc: "Calm caller" },
+            { id: "medium", label: "Medium", desc: "Realistic" },
+            { id: "hard", label: "Hard", desc: "Chaotic" },
+          ].map((d) => (
+            <button
+              key={d.id}
+              onClick={() => setDifficulty(d.id)}
+              className={`rounded-xl p-2.5 border text-center transition ${
+                difficulty === d.id
+                  ? d.id === "easy"
+                    ? "bg-emerald-700 border-emerald-500 text-white"
+                    : d.id === "hard"
+                      ? "bg-red-700 border-red-500 text-white"
+                      : "bg-amber-700 border-amber-500 text-white"
+                  : "bg-stone-800 border-stone-700 text-stone-300 hover:bg-stone-700"
+              }`}
+            >
+              <div className="text-sm font-bold">{d.label}</div>
+              <div className="text-[10px] opacity-80 leading-tight">{d.desc}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
       {supportWarning && (
         <div className="w-full mb-5 rounded-lg border border-amber-700/60 bg-amber-950/40 text-amber-200 text-sm p-3">
           {supportWarning}
@@ -64,7 +110,7 @@ export default function HomeScreen({ onPick, supportWarning }) {
             : SCENARIOS.filter((s) => s.category === category);
           if (pool.length === 0) return;
           const pick = pool[Math.floor(Math.random() * pool.length)];
-          onPick(pick, mode);
+          onPick(pick, mode, { callerName: callerName.trim(), difficulty });
         }}
         className="w-full mb-4 rounded-2xl bg-gradient-to-br from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 border border-red-500 text-white p-4 flex items-center gap-4 shadow-lg active:scale-[0.99] transition"
       >
@@ -98,7 +144,7 @@ export default function HomeScreen({ onPick, supportWarning }) {
         {filtered.map((s) => (
           <button
             key={s.id}
-            onClick={() => onPick(s, mode)}
+            onClick={() => onPick(s, mode, { callerName: callerName.trim(), difficulty })}
             className="w-full text-left rounded-2xl bg-stone-800 hover:bg-stone-700 active:bg-stone-700 border border-stone-700 p-4 flex items-start gap-4 transition"
           >
             <div className="text-3xl pt-0.5" aria-hidden>
