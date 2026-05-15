@@ -5,77 +5,77 @@
 export const SCENARIO_META = {
   asthma_grandma: {
     brief:
-      "The caller's grandma is having a bad asthma attack. She's wheezing, struggling to speak between breaths, and her inhaler isn't helping. Location: an apartment in Patchogue.",
+      "The caller's grandma is having a bad asthma attack. She's wheezing, struggling to speak between breaths, and her inhaler isn't helping. Location: an apartment in Middle Island.",
     emdCard: 6,
     emdName: "Respiratory / Breathing Problems",
     expectedDeterminant: "6-D-2A",
   },
   cardiac_arrest_grandpa: {
     brief:
-      "The caller's grandpa just collapsed in the living room. Not moving, eyes closed, no visible chest rise. Location: home in Bay Shore.",
+      "The caller's grandpa just collapsed in the living room. Not moving, eyes closed, no visible chest rise. Location: home in Middle Island.",
     emdCard: 9,
     emdName: "Cardiac / Respiratory Arrest",
     expectedDeterminant: "9-E-1",
   },
   chest_pain_dad: {
     brief:
-      "The caller's 52-year-old father is clutching his chest, breaking out in a cold sweat, says it feels like an elephant on his chest. Location: home in Smithtown.",
+      "The caller's 52-year-old father is clutching his chest, breaking out in a cold sweat, says it feels like an elephant on his chest. Location: home in Middle Island.",
     emdCard: 10,
     emdName: "Chest Pain (Non-Traumatic)",
     expectedDeterminant: "10-D-4",
   },
   choking_sister: {
     brief:
-      "The caller's 6-year-old sister was eating a hot dog and is now grabbing her throat, making weird sounds, cannot talk. Location: home in Brentwood.",
+      "The caller's 6-year-old sister was eating a hot dog and is now grabbing her throat, making weird sounds, cannot talk. Location: home in Middle Island.",
     emdCard: 11,
     emdName: "Choking",
     expectedDeterminant: "11-D-1F",
   },
   seizure_friend: {
     brief:
-      "The caller's friend at school dropped to the floor and is actively shaking — the seizure has been going for more than a minute. Location: cafeteria of a school in Sayville.",
+      "The caller's friend at school dropped to the floor and is actively shaking — the seizure has been going for more than a minute. Location: cafeteria of a school in Middle Island.",
     emdCard: 12,
     emdName: "Convulsions / Seizures",
     expectedDeterminant: "12-D-2",
   },
   diabetic_aunt: {
     brief:
-      "The caller's aunt is diabetic and is sweating, confused, slurring her words. Location: her apartment in Riverhead.",
+      "The caller's aunt is diabetic and is sweating, confused, slurring her words. Location: her apartment in Middle Island.",
     emdCard: 13,
     emdName: "Diabetic Problems",
     expectedDeterminant: "13-C-2",
   },
   fall_bike: {
     brief:
-      "The caller's friend wiped out on a bike going down a steep hill. Lying on the pavement not moving, helmet cracked. Location: a bike path in Babylon Village.",
+      "The caller's friend wiped out on a bike going down a steep hill. Lying on the pavement not moving, helmet cracked. Location: a bike path in Middle Island.",
     emdCard: 17,
     emdName: "Falls",
     expectedDeterminant: "17-D-3G",
   },
   cut_dad: {
     brief:
-      "The caller's dad cut his hand badly slicing a bagel. Heavy bleeding soaking through towels, he's becoming pale. Location: home in Hauppauge.",
+      "The caller's dad cut his hand badly slicing a bagel. Heavy bleeding soaking through towels, he's becoming pale. Location: home in Middle Island.",
     emdCard: 21,
     emdName: "Bleeding / Lacerations",
     expectedDeterminant: "21-B-2T",
   },
   allergic_bee: {
     brief:
-      "The caller's friend was stung by a bee. Face swelling, wheezing, struggling to speak between breaths. No EpiPen available. Location: Heckscher State Park in East Islip.",
+      "The caller's friend was stung by a bee. Face swelling, wheezing, struggling to speak between breaths. No EpiPen available. Location: Cathedral Pines County Park in Middle Island.",
     emdCard: 2,
     emdName: "Allergies / Envenomation",
     expectedDeterminant: "2-D-2",
   },
   stroke_grandma: {
     brief:
-      "The caller's grandma has facial droop on one side, weakness in her left arm, slurred speech. Onset about 20 minutes ago. Location: her house in Huntington.",
+      "The caller's grandma has facial droop on one side, weakness in her left arm, slurred speech. Onset about 20 minutes ago. Location: her house in Middle Island.",
     emdCard: 28,
     emdName: "Stroke (CVA) / TIA",
     expectedDeterminant: "28-C-5F",
   },
   unconscious_mom: {
     brief:
-      "The caller's mom passed out on the kitchen floor and won't wake up, but is breathing normally. Location: home in Commack.",
+      "The caller's mom passed out on the kitchen floor and won't wake up, but is breathing normally. Location: home in Middle Island.",
     emdCard: 31,
     emdName: "Unconscious / Fainting",
     expectedDeterminant: "31-D-2",
@@ -89,77 +89,77 @@ export const SCENARIO_META = {
   },
   house_fire_neighbor: {
     brief:
-      "Thick black smoke and flames are coming out of the neighbor's upstairs window. Neighbor's car is in the driveway — likely home. Location: Holbrook.",
+      "Thick black smoke and flames are coming out of the neighbor's upstairs window. Neighbor's car is in the driveway — likely home. Location: Middle Island.",
     emdCard: 7,
     emdName: "Burns / Fire / Explosion",
     expectedDeterminant: "7-C-1F",
   },
   kitchen_grease_fire: {
     brief:
-      "Grease fire on the stove, flames spreading to the cabinets. The caller's mom burned her arm trying to move the pan. Location: home in West Islip.",
+      "Grease fire on the stove, flames spreading to the cabinets. The caller's mom burned her arm trying to move the pan. Location: home in Middle Island.",
     emdCard: 7,
     emdName: "Burns / Fire / Explosion",
     expectedDeterminant: "7-A-1F",
   },
   co_alarm_brother: {
     brief:
-      "CO detector blaring for ten minutes. The caller's little brother has a headache, dizziness, and now difficulty breathing. Location: home in Selden.",
+      "CO detector blaring for ten minutes. The caller's little brother has a headache, dizziness, and now difficulty breathing. Location: home in Middle Island.",
     emdCard: 8,
     emdName: "Carbon Monoxide / Inhalation / HazMat",
     expectedDeterminant: "8-C-1M",
   },
   car_crash_intersection: {
     brief:
-      "Two-car high-velocity crash at an intersection. Airbags deployed. One driver out of vehicle staggering, one occupant still inside not moving. Location: Sunrise Highway and Ocean Avenue, Patchogue.",
+      "Two-car high-velocity crash at an intersection. Airbags deployed. One driver out of vehicle staggering, one occupant still inside not moving. Location: Middle Country Road and Bartlett Road, Middle Island.",
     emdCard: 29,
     emdName: "Traffic / Transportation Incidents",
     expectedDeterminant: "29-D-3",
   },
   pedestrian_struck: {
     brief:
-      "Auto vs pedestrian, hit-and-run. The struck pedestrian is in the roadway not moving. Location: Main Street and Foster Avenue, Sayville.",
+      "Auto vs pedestrian, hit-and-run. The struck pedestrian is in the roadway not moving. Location: Middle Country Road and Yaphank Avenue, Middle Island.",
     emdCard: 29,
     emdName: "Traffic / Transportation Incidents",
     expectedDeterminant: "29-D-2M",
   },
   bike_vs_car: {
     brief:
-      "Bicycle vs auto. Cyclist (the caller's friend) is on the side of the road, awake, bleeding from the head and complaining of leg pain. Location: Montauk Highway in Mastic.",
+      "Bicycle vs auto. Cyclist (the caller's friend) is on the side of the road, awake, bleeding from the head and complaining of leg pain. Location: Middle Country Road in Middle Island.",
     emdCard: 29,
     emdName: "Traffic / Transportation Incidents",
     expectedDeterminant: "29-D-2L",
   },
   drowning_beach: {
     brief:
-      "Drowning at the beach. Lifeguard just pulled the victim out, not breathing, not moving, CPR starting. Location: Robert Moses State Park.",
+      "Drowning at the beach. Lifeguard just pulled the victim out, not breathing, not moving, CPR starting. Location: Artist Lake, Middle Island.",
     emdCard: 14,
     emdName: "Drowning / Diving / SCUBA",
     expectedDeterminant: "14-E-1",
   },
   elderly_fall_storm: {
     brief:
-      "The caller's grandfather slipped on the icy driveway during a snowstorm. He can't get up, says his hip hurts badly, leg looks bent wrong, freezing outside. Location: home in Centereach.",
+      "The caller's grandfather slipped on the icy driveway during a snowstorm. He can't get up, says his hip hurts badly, leg looks bent wrong, freezing outside. Location: home in Middle Island.",
     emdCard: 17,
     emdName: "Falls",
     expectedDeterminant: "17-D-3G",
   },
   electrocution_dad: {
     brief:
-      "The caller's father was changing a basement light fixture and got electrocuted. He's on the floor, barely responding. The breaker tripped. Location: home in Ronkonkoma.",
+      "The caller's father was changing a basement light fixture and got electrocuted. He's on the floor, barely responding. The breaker tripped. Location: home in Middle Island.",
     emdCard: 15,
     emdName: "Electrocution / Lightning",
     expectedDeterminant: "15-D-1",
   },
   school_bus_crash: {
     brief:
-      "School bus vs pickup truck at an intersection. Kids crying on the bus, one with a head laceration, two adults down in the roadway not moving. Location: Nicolls Road and Stony Brook Road, Stony Brook.",
+      "School bus vs pickup truck at an intersection. Kids crying on the bus, one with a head laceration, two adults down in the roadway not moving. Location: Middle Country Road and Nicolls Road, Middle Island.",
     emdCard: 29,
     emdName: "Traffic / Transportation Incidents",
     expectedDeterminant: "29-D-1",
   },
   spanish_chest_pain: {
     brief:
-      "The caller's uncle (tío) is clutching his chest, breaking out in a cold sweat, can barely speak. The caller is translating for him — he only speaks Spanish. Location: home in Brentwood.",
+      "The caller's uncle (tío) is clutching his chest, breaking out in a cold sweat, can barely speak. The caller is translating for him — he only speaks Spanish. Location: home in Middle Island.",
     emdCard: 10,
     emdName: "Chest Pain (Non-Traumatic)",
     expectedDeterminant: "10-D-4",
@@ -167,7 +167,7 @@ export const SCENARIO_META = {
   },
   spanish_choking: {
     brief:
-      "The caller's 4-year-old cousin is choking on bread, can't cough or speak. The caller's aunt only speaks Spanish — the caller is translating. Location: home in Central Islip.",
+      "The caller's 4-year-old cousin is choking on bread, can't cough or speak. The caller's aunt only speaks Spanish — the caller is translating. Location: home in Middle Island.",
     emdCard: 11,
     emdName: "Choking",
     expectedDeterminant: "11-D-1F",
@@ -175,7 +175,7 @@ export const SCENARIO_META = {
   },
   suicidal_caller: {
     brief:
-      "The caller's friend called crying and said they were going to hurt themselves. The friend is alone at home in Smithtown. This is a POLICE response — no FRES will be dispatched. PD only.",
+      "The caller's friend called crying and said they were going to hurt themselves. The friend is alone at home in Middle Island. This is a POLICE response — no FRES will be dispatched. PD only.",
     emdCard: 25,
     emdName: "Psychiatric / Abnormal Behavior / Suicide Attempt",
     expectedDeterminant: "25-D-3",
@@ -187,23 +187,23 @@ const CPR_SCENARIOS = new Set(["cardiac_arrest_grandpa", "drowning_beach"]);
 
 // Town → fire department lookup for radio dispatches.
 const TOWN_DEPT = {
-  Patchogue: "Patchogue Fire Department",
-  "Bay Shore": "Bay Shore Fire Department",
-  Smithtown: "Smithtown Fire Department",
-  Brentwood: "Brentwood Fire Department",
-  Sayville: "Sayville Fire Department",
-  Riverhead: "Riverhead Fire Department",
-  "Babylon Village": "Babylon Fire Department",
-  Hauppauge: "Hauppauge Fire Department",
-  "East Islip": "East Islip Fire Department",
-  Huntington: "Huntington Manor Fire Department",
-  Commack: "Commack Fire Department",
+  Middle Island: "Middle Island Fire Department",
   "Middle Island": "Middle Island Fire Department",
-  Holbrook: "Holbrook Fire Department",
-  "West Islip": "West Islip Fire Department",
-  Selden: "Selden Fire Department",
-  Mastic: "Mastic Fire Department",
-  "Robert Moses State Park": "Babylon Fire Department",
+  Middle Island: "Middle Island Fire Department",
+  Middle Island: "Middle Island Fire Department",
+  Middle Island: "Middle Island Fire Department",
+  Middle Island: "Middle Island Fire Department",
+  "Middle Island": "Middle Island Fire Department",
+  Middle Island: "Middle Island Fire Department",
+  "Middle Island": "Middle Island Fire Department",
+  Middle Island: "Middle Island Fire Department",
+  Middle Island: "Middle Island Fire Department",
+  "Middle Island": "Middle Island Fire Department",
+  Middle Island: "Middle Island Fire Department",
+  "Middle Island": "Middle Island Fire Department",
+  Middle Island: "Middle Island Fire Department",
+  Middle Island: "Middle Island Fire Department",
+  "Artist Lake, Middle Island": "Middle Island Fire Department",
 };
 
 export function pdDispatcherSystemPrompt(scenarioId, pd, callerName) {
@@ -381,7 +381,7 @@ ASK ONLY AUTHENTIC EMD QUESTIONS. Do not invent questions. Do not ask for tangen
    - The moment you have address + chief complaint + awake/breathing status, DISPATCH UNITS. Do not wait to ask more questions first.
    - Say: "Okay, I'm sending [local agency] to you right now — they're on their way."
    - On that SAME response, also append a hidden machine-readable dispatch tag in this exact format (the caller won't see it; it goes to the radio for the responding agency):
-     [DISPATCH:dept=Local Fire Department Name;code=11-D-1F;nature=Choking — Partial Obstruction;age=6;location=123 Main St, Brentwood]
+     [DISPATCH:dept=Local Fire Department Name;code=11-D-1F;nature=Choking — Partial Obstruction;age=6;location=123 Main St, Middle Island]
      Fill in real values from the call: dept = the actual local Suffolk County fire department for the caller's town; code = your best-fit FRES EMD determinant given what you know so far; nature = the EMD card name; age = patient age in years (or "unknown"); location = the address/cross-streets the caller gave.
 
 3. KEY QUESTIONS WHILE UNITS ROLL (turns 4-6) — STRICTLY card-specific, one per turn:

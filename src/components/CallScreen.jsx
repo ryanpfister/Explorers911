@@ -299,6 +299,32 @@ export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", 
     reportAdmin({ interim: stt.interim });
   }, [stt.interim]);
 
+  // Keep the phone screen awake during a call (Android Chrome, iOS Safari 16.4+).
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("wakeLock" in navigator)) return;
+    let wakeLock = null;
+    let cancelled = false;
+    const request = async () => {
+      if (cancelled) return;
+      try {
+        wakeLock = await navigator.wakeLock.request("screen");
+        wakeLock.addEventListener?.("release", () => { wakeLock = null; });
+      } catch {
+        // Can fail if the page is hidden or battery saver is on — best effort.
+      }
+    };
+    request();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible" && !wakeLock) request();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisibility);
+      try { wakeLock?.release(); } catch {}
+    };
+  }, []);
+
   // Poll for instructor coach hints.
   useEffect(() => {
     const sid = getSessionId();

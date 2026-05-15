@@ -86,14 +86,14 @@ export function playTypingLoop() {
     filter.connect(g);
     g.connect(ac.destination);
     src.start();
-    // Occasional longer pauses simulate dispatcher pausing to read/think
-    const delay = Math.random() < 0.12
-      ? 500 + Math.random() * 700
-      : 55 + Math.random() * 120;
+    // Fast CAD entry — dispatchers are quick on the keyboard.
+    const delay = Math.random() < 0.06
+      ? 200 + Math.random() * 350
+      : 25 + Math.random() * 65;
     setTimeout(keystroke, delay);
   }
 
-  setTimeout(keystroke, 150 + Math.random() * 250);
+  setTimeout(keystroke, 60 + Math.random() * 120);
   return () => { active = false; };
 }
 

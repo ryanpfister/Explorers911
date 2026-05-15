@@ -23,8 +23,8 @@ export const SCENARIOS = [
     expectedName: "Difficulty Speaking Between Breaths — Asthma",
     difficulty: "medium",
     brief:
-      "Your grandma is having a bad asthma attack. She's wheezing badly and can barely get a word out between breaths. Her inhaler isn't helping. You're at her apartment in Patchogue.",
-    location: "Patchogue",
+      "Your grandma is having a bad asthma attack. She's wheezing badly and can barely get a word out between breaths. Her inhaler isn't helping. You're at her apartment in Middle Island.",
+    location: "Middle Island",
     emoji: "🫁",
   },
   {
@@ -37,8 +37,8 @@ export const SCENARIOS = [
     expectedName: "Not Breathing At All",
     difficulty: "hard",
     brief:
-      "Your grandpa just collapsed in the living room. He's not moving, his eyes are closed, and you can't see his chest moving. You're at home in Bay Shore.",
-    location: "Bay Shore",
+      "Your grandpa just collapsed in the living room. He's not moving, his eyes are closed, and you can't see his chest moving. You're at home in Middle Island.",
+    location: "Middle Island",
     emoji: "💔",
   },
   {
@@ -51,8 +51,8 @@ export const SCENARIOS = [
     expectedName: "Clammy or Cold Sweats",
     difficulty: "medium",
     brief:
-      "Your dad is 52, clutching his chest, breaking out in a cold sweat, and says it feels like an elephant is sitting on him. You're at home in Smithtown.",
-    location: "Smithtown",
+      "Your dad is 52, clutching his chest, breaking out in a cold sweat, and says it feels like an elephant is sitting on him. You're at home in Middle Island.",
+    location: "Middle Island",
     emoji: "❤️",
   },
   {
@@ -65,8 +65,8 @@ export const SCENARIOS = [
     expectedName: "Partial Obstruction — Food",
     difficulty: "medium",
     brief:
-      "Your 6-year-old sister was eating a hot dog and now she's grabbing her throat, making weird sounds, and can't talk. You're at home in Brentwood.",
-    location: "Brentwood",
+      "Your 6-year-old sister was eating a hot dog and now she's grabbing her throat, making weird sounds, and can't talk. You're at home in Middle Island.",
+    location: "Middle Island",
     emoji: "😰",
   },
   {
@@ -79,8 +79,8 @@ export const SCENARIOS = [
     expectedName: "Continuous or Multiple Seizures",
     difficulty: "medium",
     brief:
-      "Your friend just dropped to the floor at school and is shaking all over. It's been going for more than a minute. You're in the cafeteria at school in Sayville.",
-    location: "Sayville",
+      "Your friend just dropped to the floor at school and is shaking all over. It's been going for more than a minute. You're in the cafeteria at school in Middle Island.",
+    location: "Middle Island",
     emoji: "⚡",
   },
   {
@@ -93,8 +93,8 @@ export const SCENARIOS = [
     expectedName: "Abnormal Behavior",
     difficulty: "medium",
     brief:
-      "Your aunt has diabetes. She's sweating, confused, slurring her words, and not making sense. You're at her apartment in Riverhead.",
-    location: "Riverhead",
+      "Your aunt has diabetes. She's sweating, confused, slurring her words, and not making sense. You're at her apartment in Middle Island.",
+    location: "Middle Island",
     emoji: "🩸",
   },
   {
@@ -107,8 +107,8 @@ export const SCENARIOS = [
     expectedName: "Unconscious — On the Ground",
     difficulty: "easy",
     brief:
-      "Your friend just wiped out on their bike going down a steep hill. They're lying on the pavement not moving and their helmet is cracked. You're on a bike path in Babylon Village.",
-    location: "Babylon Village",
+      "Your friend just wiped out on their bike going down a steep hill. They're lying on the pavement not moving and their helmet is cracked. You're on a bike path in Middle Island.",
+    location: "Middle Island",
     emoji: "🚲",
   },
   {
@@ -121,8 +121,8 @@ export const SCENARIOS = [
     expectedName: "Serious Hemorrhage — Trauma",
     difficulty: "medium",
     brief:
-      "Your dad cut his hand badly while slicing a bagel. Blood is soaking through the kitchen towels, and he's starting to look pale. You're at home in Hauppauge.",
-    location: "Hauppauge",
+      "Your dad cut his hand badly while slicing a bagel. Blood is soaking through the kitchen towels, and he's starting to look pale. You're at home in Middle Island.",
+    location: "Middle Island",
     emoji: "🩹",
   },
   {
@@ -135,8 +135,8 @@ export const SCENARIOS = [
     expectedName: "Difficulty Speaking Between Breaths",
     difficulty: "medium",
     brief:
-      "Your friend got stung by a bee and now their face is swelling up, they're wheezing, and they can barely get a word out. They don't have an EpiPen. You're at Heckscher State Park in East Islip.",
-    location: "East Islip (Heckscher State Park)",
+      "Your friend got stung by a bee and now their face is swelling up, they're wheezing, and they can barely get a word out. They don't have an EpiPen. You're at Cathedral Pines County Park in Middle Island.",
+    location: "Middle Island (Cathedral Pines County Park)",
     emoji: "🐝",
   },
   {
@@ -149,8 +149,8 @@ export const SCENARIOS = [
     expectedName: "Sudden Facial Droop — Strong Evidence < 2 hrs",
     difficulty: "medium",
     brief:
-      "Your grandma's face is drooping on one side, her left arm feels weak, and her speech is slurred. It started about 20 minutes ago. You're at her house in Huntington.",
-    location: "Huntington",
+      "Your grandma's face is drooping on one side, her left arm feels weak, and her speech is slurred. It started about 20 minutes ago. You're at her house in Middle Island.",
+    location: "Middle Island",
     emoji: "🧠",
   },
   {
@@ -163,8 +163,8 @@ export const SCENARIOS = [
     expectedName: "Unconscious — Effective Breathing",
     difficulty: "medium",
     brief:
-      "Your mom just passed out on the kitchen floor and isn't waking up, but you can see her chest moving so she's breathing. You're at home in Commack.",
-    location: "Commack",
+      "Your mom just passed out on the kitchen floor and isn't waking up, but you can see her chest moving so she's breathing. You're at home in Middle Island.",
+    location: "Middle Island",
     emoji: "😵",
   },
   {
@@ -193,8 +193,8 @@ export const SCENARIOS = [
     expectedName: "Fire With Persons Reported Inside",
     difficulty: "easy",
     brief:
-      "Thick black smoke and flames are coming out of your neighbor's upstairs window. Their car is in the driveway so you think they're home. You're outside in Holbrook.",
-    location: "Holbrook",
+      "Thick black smoke and flames are coming out of your neighbor's upstairs window. Their car is in the driveway so you think they're home. You're outside in Middle Island.",
+    location: "Middle Island",
     emoji: "🔥",
   },
   {
@@ -207,8 +207,8 @@ export const SCENARIOS = [
     expectedName: "Burns < 18% Body Area — Fire Present",
     difficulty: "medium",
     brief:
-      "A pan of oil caught fire on the stove. Flames are spreading to the cabinets, and your mom burned her arm trying to move the pan. You're at home in West Islip.",
-    location: "West Islip",
+      "A pan of oil caught fire on the stove. Flames are spreading to the cabinets, and your mom burned her arm trying to move the pan. You're at home in Middle Island.",
+    location: "Middle Island",
     emoji: "🍳",
   },
   {
@@ -221,8 +221,8 @@ export const SCENARIOS = [
     expectedName: "Alert with Difficulty Breathing — Carbon Monoxide",
     difficulty: "medium",
     brief:
-      "Your CO detector has been blaring for ten minutes. Your little brother says his head hurts and he's dizzy, and now he's having a hard time catching his breath. You're at home in Selden.",
-    location: "Selden",
+      "Your CO detector has been blaring for ten minutes. Your little brother says his head hurts and he's dizzy, and now he's having a hard time catching his breath. You're at home in Middle Island.",
+    location: "Middle Island",
     emoji: "🚨",
   },
 
@@ -237,8 +237,8 @@ export const SCENARIOS = [
     expectedName: "High Velocity Impact",
     difficulty: "medium",
     brief:
-      "Two cars just crashed hard at the intersection in front of you. Airbags went off, one driver is out of the car staggering, and another person is still in the second car not moving. You're at Sunrise Highway and Ocean Avenue in Patchogue.",
-    location: "Patchogue (Sunrise Hwy & Ocean Ave)",
+      "Two cars just crashed hard at the intersection in front of you. Airbags went off, one driver is out of the car staggering, and another person is still in the second car not moving. You're at Middle Country Road and Bartlett Road in Middle Island.",
+    location: "Middle Island (Middle Country Rd & Bartlett Rd)",
     emoji: "🚗",
   },
   {
@@ -251,8 +251,8 @@ export const SCENARIOS = [
     expectedName: "High Mechanism — Auto vs Pedestrian",
     difficulty: "hard",
     brief:
-      "A car just hit a person in the crosswalk and kept going. The person is lying in the road and not moving. You're at Main Street and Foster Avenue in Sayville.",
-    location: "Sayville (Main & Foster)",
+      "A car just hit a person in the crosswalk and kept going. The person is lying in the road and not moving. You're at Middle Country Road and Yaphank Avenue in Middle Island.",
+    location: "Middle Island (Middle Country & Yaphank)",
     emoji: "🚶",
   },
   {
@@ -265,8 +265,8 @@ export const SCENARIOS = [
     expectedName: "High Mechanism — Bicycle vs Auto",
     difficulty: "medium",
     brief:
-      "Your friend was riding their bike home and got hit by a car. They're on the side of the road, awake but bleeding from their head and saying their leg really hurts. You're on Montauk Highway in Mastic.",
-    location: "Mastic (Montauk Hwy)",
+      "Your friend was riding their bike home and got hit by a car. They're on the side of the road, awake but bleeding from their head and saying their leg really hurts. You're on Middle Country Road in Middle Island.",
+    location: "Middle Island (Middle Country Rd)",
     emoji: "🚴",
   },
 
@@ -281,8 +281,8 @@ export const SCENARIOS = [
     expectedName: "Arrest (Out of Water)",
     difficulty: "hard",
     brief:
-      "Someone went under at Robert Moses Beach and a lifeguard just dragged them onto the sand. They're not breathing and not moving — the lifeguard is starting CPR.",
-    location: "Robert Moses State Park",
+      "Someone went under at Artist Lake and a lifeguard just dragged them onto the sand. They're not breathing and not moving — the lifeguard is starting CPR.",
+    location: "Artist Lake, Middle Island",
     emoji: "🌊",
   },
   // ─── Additional scenarios ─────────────────────────────────────────────
@@ -297,7 +297,7 @@ export const SCENARIOS = [
     difficulty: "hard",
     brief:
       "Your grandfather slipped on the icy driveway during a snowstorm. He can't get up, says his hip hurts badly, and you can see his leg looks bent wrong. It's freezing outside.",
-    location: "Centereach",
+    location: "Middle Island",
     emoji: "🥶",
   },
   {
@@ -310,8 +310,8 @@ export const SCENARIOS = [
     expectedName: "Not Alert",
     difficulty: "hard",
     brief:
-      "Your dad was changing a basement light fixture and got electrocuted. He's on the floor, not really responding. The breaker tripped. You're at home in Ronkonkoma.",
-    location: "Ronkonkoma",
+      "Your dad was changing a basement light fixture and got electrocuted. He's on the floor, not really responding. The breaker tripped. You're at home in Middle Island.",
+    location: "Middle Island",
     emoji: "⚡",
   },
   {
@@ -324,8 +324,8 @@ export const SCENARIOS = [
     expectedName: "Multiple Patients",
     difficulty: "hard",
     brief:
-      "A school bus and a pickup truck collided at the intersection. Kids are crying inside the bus, one is bleeding from the head, two adults on the road aren't moving. You're at Nicolls Road and Stony Brook Road, Stony Brook.",
-    location: "Stony Brook",
+      "A school bus and a pickup truck collided at the intersection. Kids are crying inside the bus, one is bleeding from the head, two adults on the road aren't moving. You're at Middle Country Road and Nicolls Road, Middle Island.",
+    location: "Middle Island",
     emoji: "🚌",
   },
   {
@@ -338,8 +338,8 @@ export const SCENARIOS = [
     expectedName: "Clammy + Heart Problems",
     difficulty: "hard",
     brief:
-      "Your tío (uncle) is clutching his chest, sweating cold, can barely speak. He doesn't speak English — you're translating. You're at his house in Brentwood.",
-    location: "Brentwood",
+      "Your tío (uncle) is clutching his chest, sweating cold, can barely speak. He doesn't speak English — you're translating. You're at his house in Middle Island.",
+    location: "Middle Island",
     emoji: "🇪🇸",
     spanishCaller: true,
   },
@@ -353,8 +353,8 @@ export const SCENARIOS = [
     expectedName: "Complete Obstruction — Food",
     difficulty: "hard",
     brief:
-      "Tu primito (little cousin), 4 años, está atorado con un pedazo de pan. No puede toser ni hablar. Está en casa de tu abuela en Central Islip. Mom only speaks Spanish — you're helping.",
-    location: "Central Islip",
+      "Tu primito (little cousin), 4 años, está atorado con un pedazo de pan. No puede toser ni hablar. Está en casa de tu abuela en Middle Island. Mom only speaks Spanish — you're helping.",
+    location: "Middle Island",
     emoji: "🇪🇸",
     spanishCaller: true,
   },
@@ -368,8 +368,8 @@ export const SCENARIOS = [
     expectedName: "High Risk — Threatening Suicide",
     difficulty: "hard",
     brief:
-      "A friend called you crying and said they're going to hurt themselves. They're alone at home in Smithtown. They sound serious — this is a police-only call (FRES will not respond).",
-    location: "Smithtown",
+      "A friend called you crying and said they're going to hurt themselves. They're alone at home in Middle Island. They sound serious — this is a police-only call (FRES will not respond).",
+    location: "Middle Island",
     emoji: "🆘",
     pdOnly: true,
   },
