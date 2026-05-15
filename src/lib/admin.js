@@ -16,6 +16,10 @@ export function setSessionId(id) {
   sessionId = id;
 }
 
+export function getSessionId() {
+  return sessionId;
+}
+
 async function flush() {
   if (inFlight || !pending || !sessionId) return;
   const payload = pending;

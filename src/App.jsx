@@ -11,7 +11,7 @@ import {
 } from "./hooks/useSpeechSynthesis.js";
 import { primeAudio } from "./lib/sound.js";
 import { newSessionId, setSessionId } from "./lib/admin.js";
-import { generateDispatcherPersona } from "./lib/persona.js";
+import { generateDispatcherPersona, generatePdPersona } from "./lib/persona.js";
 
 const STAGES = {
   HOME: "home",
@@ -53,6 +53,8 @@ export default function App() {
   const [transcript, setTranscript] = useState([]);
   const [permissionError, setPermissionError] = useState(null);
   const [dispatcher, setDispatcher] = useState(null);
+  const [pd, setPd] = useState(null);
+  const [mode, setMode] = useState("caller");
   const sessionIdRef = useRef(null);
 
   const sttOk = speechRecognitionSupported;
@@ -63,7 +65,7 @@ export default function App() {
       ? "Your browser doesn't support speech playback."
       : permissionError;
 
-  const handlePick = async (s) => {
+  const handlePick = async (s, pickedMode = "caller") => {
     // Unlock audio + speech synth from this direct gesture (iOS Safari).
     primeAudio();
     primeSpeechSynthesis();
@@ -82,7 +84,9 @@ export default function App() {
     sessionIdRef.current = id;
     setSessionId(id);
 
+    setMode(pickedMode);
     setDispatcher(generateDispatcherPersona());
+    setPd(generatePdPersona());
     setScenario(s);
     setTranscript([]);
     setStage(STAGES.RINGING);
@@ -103,6 +107,8 @@ export default function App() {
     setScenario(null);
     setTranscript([]);
     setDispatcher(null);
+    setPd(null);
+    setMode("caller");
     sessionIdRef.current = null;
     setSessionId(null);
     setStage(STAGES.HOME);
@@ -121,6 +127,8 @@ export default function App() {
         <RingingScreen
           scenario={scenario}
           dispatcher={dispatcher}
+          pd={pd}
+          mode={mode}
           onConnected={handleConnected}
           onCancel={handleCancel}
         />
@@ -129,6 +137,8 @@ export default function App() {
         <CallScreen
           scenario={scenario}
           dispatcher={dispatcher}
+          pd={pd}
+          mode={mode}
           onEnd={handleCallEnd}
         />
       )}
@@ -137,6 +147,7 @@ export default function App() {
           scenario={scenario}
           messages={transcript}
           sessionId={sessionIdRef.current}
+          mode={mode}
           onRestart={handleRestart}
         />
       )}

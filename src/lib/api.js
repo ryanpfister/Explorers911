@@ -1,8 +1,24 @@
-export async function dispatcherReply({ scenarioId, messages, dispatcher }) {
+export async function dispatcherReply({
+  scenarioId,
+  messages,
+  dispatcher,
+  pd,
+  agent = "fres",
+  mode = "caller",
+  sessionId,
+}) {
   const res = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ scenarioId, messages, dispatcher }),
+    body: JSON.stringify({
+      scenarioId,
+      messages,
+      dispatcher,
+      pd,
+      agent,
+      mode,
+      sessionId,
+    }),
   });
   if (!res.ok) {
     const body = await res.text();
@@ -11,11 +27,11 @@ export async function dispatcherReply({ scenarioId, messages, dispatcher }) {
   return res.json();
 }
 
-export async function fetchFeedback({ scenarioId, messages, sessionId }) {
+export async function fetchFeedback({ scenarioId, messages, sessionId, mode = "caller" }) {
   const res = await fetch("/api/feedback", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ scenarioId, messages, sessionId }),
+    body: JSON.stringify({ scenarioId, messages, sessionId, mode }),
   });
   if (!res.ok) {
     const body = await res.text();

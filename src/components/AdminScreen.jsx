@@ -2,6 +2,54 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { scenarioById, difficultyColor } from "../scenarios.js";
 import { resetAdmin, deleteSession } from "../lib/admin.js";
 
+const PHONETIC = {
+  A: "Alpha", B: "Bravo", C: "Charlie", D: "Delta", E: "Echo",
+  F: "Foxtrot", G: "Golf", H: "Hotel", I: "India", J: "Juliet",
+  K: "Kilo", L: "Lima", M: "Mike", N: "November", O: "Oscar",
+  P: "Papa", Q: "Quebec", R: "Romeo", S: "Sierra", T: "Tango",
+  U: "Uniform", V: "Victor", W: "Whiskey", X: "Xray", Y: "Yankee", Z: "Zulu",
+};
+
+function phoneticCode(code) {
+  if (!code) return "";
+  return code
+    .toUpperCase()
+    .split("")
+    .map((c) => {
+      if (PHONETIC[c]) return ` ${PHONETIC[c]} `;
+      if (c === "-") return " ";
+      return c;
+    })
+    .join("")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function formatDispatchTime(ts) {
+  const d = new Date(ts || Date.now());
+  return `${d.getHours().toString().padStart(2, "0")}${d.getMinutes().toString().padStart(2, "0")} hours`;
+}
+
+function buildAnnouncementText(d) {
+  const ageStr =
+    d.age && d.age !== "unknown" && d.age !== ""
+      ? `for a ${d.age} year old patient`
+      : "for a patient";
+  const codePart = d.code ? `, code ${phoneticCode(d.code)}` : "";
+  const nature = d.nature ? `, ${d.nature}, ` : ", ";
+  return `${d.department || "Suffolk County Fire Rescue"}, on the air with an EMS alarm${codePart}${nature}${ageStr} at ${d.location || "an unknown location"}. Time is now ${formatDispatchTime(d.timestamp)}.`;
+}
+
+function speakAnnouncement(text) {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.rate = 0.95;
+  u.pitch = 1.0;
+  u.volume = 1.0;
+  window.speechSynthesis.speak(u);
+}
+
 function formatTimer(ms) {
   if (!ms || ms < 0) ms = 0;
   const total = Math.floor(ms / 1000);
@@ -353,6 +401,9 @@ export default function AdminScreen() {
   const [selectedId, setSelectedId] = useState(null);
   const [now, setNow] = useState(Date.now());
   const [filter, setFilter] = useState("active"); // active | all
+  const [latestDispatch, setLatestDispatch] = useState(null);
+  const [audioReady, setAudioReady] = useState(false);
+  const spokenDispatchKeys = useRef(new Set());
 
   useEffect(() => {
     const es = new EventSource("/api/admin/stream");
@@ -368,6 +419,39 @@ export default function AdminScreen() {
     es.onerror = () => setConnected(false);
     return () => es.close();
   }, []);
+
+  // Watch for new dispatch events and announce them over the TV speakers.
+  useEffect(() => {
+    if (!audioReady) return;
+    for (const s of Object.values(sessions)) {
+      if (!s.dispatch) continue;
+      const key = `${s.id}:${s.dispatch.timestamp}`;
+      if (spokenDispatchKeys.current.has(key)) continue;
+      spokenDispatchKeys.current.add(key);
+      const enriched = { ...s.dispatch, sessionId: s.id };
+      setLatestDispatch(enriched);
+      speakAnnouncement(buildAnnouncementText(enriched));
+    }
+  }, [sessions, audioReady]);
+
+  const handleEnableAudio = () => {
+    // iOS/Safari and Chrome require a user gesture before SpeechSynthesis works.
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      try {
+        const u = new SpeechSynthesisUtterance("Dispatch audio enabled.");
+        u.volume = 1.0;
+        window.speechSynthesis.speak(u);
+      } catch {
+        // ignore
+      }
+    }
+    setAudioReady(true);
+  };
+
+  const replayLatest = () => {
+    if (!latestDispatch) return;
+    speakAnnouncement(buildAnnouncementText(latestDispatch));
+  };
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 500);
@@ -479,6 +563,17 @@ export default function AdminScreen() {
             }`}
             title={connected ? "Connected" : "Disconnected"}
           />
+          {!audioReady ? (
+            <button
+              onClick={handleEnableAudio}
+              className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 border border-amber-500 text-white text-sm font-bold"
+              title="Required once per session — speech needs a user gesture"
+            >
+              🔊 Enable Dispatch Audio
+            </button>
+          ) : (
+            <span className="text-emerald-300 text-xs font-mono">🔊 audio live</span>
+          )}
           <button
             onClick={() => {
               if (confirm("Clear ALL sessions from the projector?")) {
@@ -491,6 +586,32 @@ export default function AdminScreen() {
           </button>
         </div>
       </div>
+
+      {latestDispatch && (
+        <div className="px-8 py-3 bg-amber-950/40 border-b border-amber-800/60 flex items-center gap-4">
+          <div className="text-amber-400 text-3xl">📻</div>
+          <div className="flex-1 min-w-0">
+            <div className="text-amber-300 text-[10px] uppercase tracking-widest font-bold">
+              Radio Dispatch · {new Date(latestDispatch.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            </div>
+            <div className="text-amber-100 font-mono text-sm leading-snug truncate">
+              {latestDispatch.department} — {latestDispatch.code} {latestDispatch.nature} — age {latestDispatch.age} at {latestDispatch.location}
+            </div>
+          </div>
+          <button
+            onClick={replayLatest}
+            className="px-3 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-sm font-bold"
+          >
+            🔁 Replay
+          </button>
+          <button
+            onClick={() => setLatestDispatch(null)}
+            className="px-2 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 text-sm"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Grid */}
       <div className="flex-1 px-8 py-6">

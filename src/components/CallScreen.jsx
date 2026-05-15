@@ -3,46 +3,66 @@ import { useSpeechRecognition } from "../hooks/useSpeechRecognition.js";
 import { useSpeechSynthesis } from "../hooks/useSpeechSynthesis.js";
 import { dispatcherReply } from "../lib/api.js";
 import { playEndBeep, playTypingLoop, playHoldTone, playConnectChirp } from "../lib/sound.js";
-
-const DISPATCH_RE = /\b(stand by|hold on|dispatching|dispatch|en route|on (?:the|their) way|responding|heading your way|units (?:are|have been)|sending .+(?:fire|ems|ambulance|medic|rescue))\b/i;
-import { reportAdmin } from "../lib/admin.js";
+import { reportAdmin, getSessionId } from "../lib/admin.js";
 
 const END_TAG = "[END_CALL]";
+const TRANSFER_TAG = "[TRANSFER]";
+const DISPATCH_TAG_RE = /\[DISPATCH:[^\]]+\]/g;
+const DISPATCH_RE = /\b(stand by|hold on|dispatching|dispatch|en route|on (?:the|their) way|responding|heading your way|units (?:are|have been)|sending .+(?:fire|ems|ambulance|medic|rescue))\b/i;
 
 function formatTimer(seconds) {
-  const m = Math.floor(seconds / 60)
-    .toString()
-    .padStart(2, "0");
+  const m = Math.floor(seconds / 60).toString().padStart(2, "0");
   const s = (seconds % 60).toString().padStart(2, "0");
   return `${m}:${s}`;
 }
 
-export default function CallScreen({ scenario, dispatcher, onEnd }) {
+function bubbleLabel(role, agent, mode) {
+  if (mode === "dispatcher") {
+    return role === "user" ? "You (Dispatcher)" : "Caller";
+  }
+  if (role === "user") return "You";
+  if (agent === "pd") return "SCPD";
+  return "Fire Rescue";
+}
+
+function bubbleClasses(role, agent, mode) {
+  if (role === "user") {
+    return mode === "dispatcher"
+      ? "bg-sky-600 text-white rounded-br-md"
+      : "bg-red-600 text-white rounded-br-md";
+  }
+  if (agent === "pd") return "bg-blue-900/60 text-stone-100 rounded-bl-md border border-blue-800/60";
+  return "bg-stone-800 text-stone-100 rounded-bl-md";
+}
+
+export default function CallScreen({ scenario, dispatcher, pd, mode = "caller", onEnd }) {
   const [messages, setMessages] = useState([]);
   const [thinking, setThinking] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState(null);
   const [endedReason, setEndedReason] = useState(null);
+  // In caller mode: "pd" → "fres" after transfer. In dispatcher mode: always "caller".
+  const [agent, setAgent] = useState(mode === "dispatcher" ? "caller" : "pd");
   const scrollRef = useRef(null);
   const endSentinelRef = useRef(null);
   const endedRef = useRef(false);
+  const agentRef = useRef(agent);
+  useEffect(() => {
+    agentRef.current = agent;
+  }, [agent]);
 
-  const synth = useSpeechSynthesis({ voiceSeed: dispatcher?.badge || 0 });
+  const synth = useSpeechSynthesis({ voiceSeed: (dispatcher?.badge || 0) + (agent === "pd" ? 1 : 0) });
   const messagesRef = useRef(messages);
   const typingStopRef = useRef(null);
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
 
-  // Will be reassigned once useSpeechRecognition runs — but the dispatcher
-  // logic needs to reference it via a ref to avoid stale closures.
   const sttRef = useRef(null);
 
-  const sendToDispatcher = useCallback(
+  const sendToAI = useCallback(
     async (history) => {
       if (endedRef.current) return;
-      // Mute the mic while we wait + speak so the dispatcher's own voice
-      // doesn't get picked up by the kid's phone microphone.
       sttRef.current?.pause();
       setThinking(true);
       setError(null);
@@ -52,15 +72,30 @@ export default function CallScreen({ scenario, dispatcher, onEnd }) {
           scenarioId: scenario.id,
           messages: history,
           dispatcher,
+          pd,
+          agent: agentRef.current,
+          mode,
+          sessionId: getSessionId(),
         });
         const isFinal = reply.includes(END_TAG);
-        const cleaned = reply.replace(END_TAG, "").trim();
-        const next = [...history, { role: "assistant", content: cleaned }];
+        const isTransfer = reply.includes(TRANSFER_TAG);
+        // Strip control tags from what gets shown/spoken.
+        let cleaned = reply
+          .replace(END_TAG, "")
+          .replace(TRANSFER_TAG, "")
+          .replace(DISPATCH_TAG_RE, "")
+          .trim();
+
+        const stampedAgent = mode === "dispatcher" ? "caller" : agentRef.current;
+        const next = [
+          ...history,
+          { role: "assistant", content: cleaned, agent: stampedAgent },
+        ];
         setMessages(next);
         setThinking(false);
 
-        // Play radio dispatch tone when units are sent, then wait for it to finish.
-        if (DISPATCH_RE.test(cleaned)) {
+        // Hold tone when FRES dispatches units.
+        if (mode === "caller" && agentRef.current === "fres" && DISPATCH_RE.test(cleaned)) {
           playHoldTone();
           await new Promise((r) => setTimeout(r, 950));
         }
@@ -71,6 +106,18 @@ export default function CallScreen({ scenario, dispatcher, onEnd }) {
         });
         synth.speak(cleaned, {
           onEnd: () => {
+            // PD just transferred — switch to FRES, play tone, fetch FRES opener.
+            if (isTransfer && mode === "caller" && agentRef.current === "pd" && !endedRef.current) {
+              playHoldTone();
+              setTimeout(() => {
+                if (endedRef.current) return;
+                setAgent("fres");
+                agentRef.current = "fres";
+                reportAdmin({ agent: "fres" });
+                sendToAI(next);
+              }, 1500);
+              return;
+            }
             if (isFinal && !endedRef.current) {
               endedRef.current = true;
               setEndedReason("dispatched");
@@ -83,7 +130,6 @@ export default function CallScreen({ scenario, dispatcher, onEnd }) {
               setTimeout(() => onEnd(messagesRef.current), 1200);
               return;
             }
-            // Dispatcher finished — open the mic back up for the caller.
             reportAdmin({ callerStatus: "listening" });
             sttRef.current?.resume();
           },
@@ -95,7 +141,7 @@ export default function CallScreen({ scenario, dispatcher, onEnd }) {
         sttRef.current?.resume();
       }
     },
-    [scenario.id, synth, onEnd, dispatcher]
+    [scenario.id, synth, onEnd, dispatcher, pd, mode]
   );
 
   const handleFinalTranscript = useCallback(
@@ -103,34 +149,41 @@ export default function CallScreen({ scenario, dispatcher, onEnd }) {
       if (endedRef.current) return;
       const next = [...messagesRef.current, { role: "user", content: text }];
       setMessages(next);
-      sendToDispatcher(next);
+      sendToAI(next);
     },
-    [sendToDispatcher]
+    [sendToAI]
   );
 
   const stt = useSpeechRecognition({ onFinalResult: handleFinalTranscript });
   sttRef.current = stt;
 
-  // Kick off: announce session, fetch the opener, start listening.
+  // Kick off.
   useEffect(() => {
     playConnectChirp();
     reportAdmin({
       status: "in-call",
       scenarioId: scenario.id,
+      mode,
+      agent,
       startedAt: Date.now(),
       messages: [],
       interim: "",
       feedback: null,
       emdCode: null,
+      dispatch: null,
       endedAt: null,
     });
     stt.start();
-    sendToDispatcher([]);
+    // In caller mode, AI (PD) opens. In dispatcher mode, the kid speaks first.
+    if (mode === "caller") {
+      sendToAI([]);
+    } else {
+      reportAdmin({ callerStatus: "listening" });
+    }
     return () => stt.stop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Start/stop CAD typing sounds while waiting for dispatcher reply.
   useEffect(() => {
     if (thinking) {
       typingStopRef.current = playTypingLoop();
@@ -144,19 +197,15 @@ export default function CallScreen({ scenario, dispatcher, onEnd }) {
     };
   }, [thinking]);
 
-  // Stream interim transcripts to admin so the projector can show
-  // the kid's words in real time.
   useEffect(() => {
     reportAdmin({ interim: stt.interim });
   }, [stt.interim]);
 
-  // Call timer.
   useEffect(() => {
     const t = setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => clearInterval(t);
   }, []);
 
-  // Auto-scroll.
   useEffect(() => {
     const container = scrollRef.current;
     if (!container) return;
@@ -190,16 +239,43 @@ export default function CallScreen({ scenario, dispatcher, onEnd }) {
   const status = endedReason
     ? "Call ended"
     : synth.speaking
-      ? "Dispatcher is speaking…"
+      ? mode === "dispatcher"
+        ? "Caller is speaking…"
+        : agent === "pd"
+          ? "SCPD is speaking…"
+          : "Fire Rescue is speaking…"
       : thinking
-        ? "Sending to dispatcher…"
+        ? "Connecting…"
         : stt.listening
-          ? "Listening — talk normally"
+          ? mode === "dispatcher"
+            ? "Listening — speak as the dispatcher"
+            : "Listening — talk normally"
           : "Mic paused";
+
+  const headerTitle =
+    mode === "dispatcher"
+      ? "FRES Dispatch Console"
+      : agent === "pd"
+        ? "Suffolk County Police"
+        : "Suffolk County Fire Rescue";
+  const headerSub =
+    mode === "dispatcher"
+      ? dispatcher
+        ? `You: Dispatcher ${dispatcher.lastName} · #${dispatcher.badge}`
+        : "You are the dispatcher"
+      : agent === "pd"
+        ? pd
+          ? `Officer ${pd.lastName} · #${pd.badge}`
+          : null
+        : dispatcher
+          ? `Disp. ${dispatcher.lastName} · #${dispatcher.badge}`
+          : null;
+
+  const showHint =
+    mode === "dispatcher" && messages.length === 0 && !thinking && !endedReason;
 
   return (
     <div className="min-h-full flex flex-col max-w-md mx-auto">
-      {/* Header */}
       <div className="px-5 pt-6 pb-4 flex items-center justify-between border-b border-stone-800">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -214,11 +290,11 @@ export default function CallScreen({ scenario, dispatcher, onEnd }) {
             </div>
           </div>
           <div className="text-stone-100 text-lg font-bold mt-0.5">
-            Suffolk County 911
+            {headerTitle}
           </div>
-          {dispatcher && (
+          {headerSub && (
             <div className="text-stone-500 text-[11px] font-mono mt-0.5 truncate">
-              Disp. {dispatcher.lastName} · #{dispatcher.badge}
+              {headerSub}
             </div>
           )}
         </div>
@@ -238,22 +314,29 @@ export default function CallScreen({ scenario, dispatcher, onEnd }) {
         </div>
       </div>
 
-      {/* Transcript */}
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-3">
+        {showHint && (
+          <div className="rounded-2xl border border-sky-800/60 bg-sky-950/40 text-sky-100 text-sm p-4">
+            <div className="text-[10px] uppercase tracking-widest text-sky-300 mb-1.5">
+              Pick up the call
+            </div>
+            <div className="leading-snug">
+              You're <span className="font-semibold">Dispatcher {dispatcher?.lastName}</span>. SCPD just conferenced
+              in a caller. Greet them — try: <span className="italic">"Suffolk County
+              Fire Rescue, Dispatcher {dispatcher?.lastName}, go ahead."</span>
+            </div>
+          </div>
+        )}
         {messages.map((m, i) => (
           <div
             key={i}
             className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
           >
             <div
-              className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-base leading-snug ${
-                m.role === "user"
-                  ? "bg-red-600 text-white rounded-br-md"
-                  : "bg-stone-800 text-stone-100 rounded-bl-md"
-              }`}
+              className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-base leading-snug ${bubbleClasses(m.role, m.agent, mode)}`}
             >
               <div className="text-xs uppercase opacity-70 mb-0.5 tracking-wide">
-                {m.role === "user" ? "You" : "Dispatcher"}
+                {bubbleLabel(m.role, m.agent, mode)}
               </div>
               {m.content}
             </div>
@@ -262,7 +345,7 @@ export default function CallScreen({ scenario, dispatcher, onEnd }) {
 
         {stt.interim && (
           <div className="flex justify-end">
-            <div className="max-w-[80%] rounded-2xl rounded-br-md px-4 py-2.5 text-base bg-red-600/40 text-white italic">
+            <div className={`max-w-[80%] rounded-2xl rounded-br-md px-4 py-2.5 text-base italic text-white ${mode === "dispatcher" ? "bg-sky-600/40" : "bg-red-600/40"}`}>
               {stt.interim}
             </div>
           </div>
@@ -295,7 +378,6 @@ export default function CallScreen({ scenario, dispatcher, onEnd }) {
         <div ref={endSentinelRef} />
       </div>
 
-      {/* Status + controls */}
       <div className="px-5 pt-3 pb-7 border-t border-stone-800 bg-stone-900">
         <div className="flex items-center justify-center gap-3 mb-3">
           <div
@@ -320,14 +402,13 @@ export default function CallScreen({ scenario, dispatcher, onEnd }) {
             onClick={handleInterrupt}
             disabled={!synth.speaking}
             className="h-14 px-5 rounded-2xl bg-stone-800 hover:bg-stone-700 text-stone-200 font-semibold border border-stone-700 disabled:opacity-30 disabled:cursor-not-allowed"
-            title="Interrupt dispatcher (jump back in)"
+            title="Interrupt (jump back in)"
           >
             ✋ Interrupt
           </button>
         </div>
         <div className="text-center text-stone-500 text-[11px] mt-3 leading-snug">
-          For best results, hold the phone close to your mouth.
-          Headphones help in noisy rooms.
+          Hold the phone close to your mouth. Headphones help in noisy rooms.
         </div>
       </div>
     </div>

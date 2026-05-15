@@ -3,6 +3,7 @@ import { SCENARIOS, CATEGORIES, difficultyColor } from "../scenarios.js";
 
 export default function HomeScreen({ onPick, supportWarning }) {
   const [category, setCategory] = useState("all");
+  const [mode, setMode] = useState("caller");
 
   const filtered = useMemo(() => {
     if (category === "all") return SCENARIOS;
@@ -17,9 +18,37 @@ export default function HomeScreen({ onPick, supportWarning }) {
           Suffolk County FRES Training
         </div>
         <p className="text-stone-400 text-sm mt-2 leading-snug">
-          Pick a scenario and practice making a real 911 call. Talk to the
-          dispatcher out loud.
+          Pick a scenario and practice a real 911 call out loud.
         </p>
+      </div>
+
+      <div className="w-full mb-4 grid grid-cols-2 gap-2">
+        <button
+          onClick={() => setMode("caller")}
+          className={`rounded-xl p-3 border text-left transition ${
+            mode === "caller"
+              ? "bg-red-600/90 border-red-500 text-white"
+              : "bg-stone-800 border-stone-700 text-stone-300 hover:bg-stone-700"
+          }`}
+        >
+          <div className="text-sm font-bold">📞 Be the Caller</div>
+          <div className="text-[11px] mt-0.5 opacity-90 leading-snug">
+            You dial 911. Police picks up, transfers to Fire Rescue.
+          </div>
+        </button>
+        <button
+          onClick={() => setMode("dispatcher")}
+          className={`rounded-xl p-3 border text-left transition ${
+            mode === "dispatcher"
+              ? "bg-sky-600/90 border-sky-500 text-white"
+              : "bg-stone-800 border-stone-700 text-stone-300 hover:bg-stone-700"
+          }`}
+        >
+          <div className="text-sm font-bold">🎧 Be the Dispatcher</div>
+          <div className="text-[11px] mt-0.5 opacity-90 leading-snug">
+            You're FRES. A transferred call comes in — you run protocol.
+          </div>
+        </button>
       </div>
 
       {supportWarning && (
@@ -48,7 +77,7 @@ export default function HomeScreen({ onPick, supportWarning }) {
         {filtered.map((s) => (
           <button
             key={s.id}
-            onClick={() => onPick(s)}
+            onClick={() => onPick(s, mode)}
             className="w-full text-left rounded-2xl bg-stone-800 hover:bg-stone-700 active:bg-stone-700 border border-stone-700 p-4 flex items-start gap-4 transition"
           >
             <div className="text-3xl pt-0.5" aria-hidden>

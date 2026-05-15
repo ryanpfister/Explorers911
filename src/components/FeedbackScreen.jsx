@@ -49,7 +49,7 @@ function parseFeedback(text) {
   return out;
 }
 
-export default function FeedbackScreen({ scenario, messages, sessionId, onRestart }) {
+export default function FeedbackScreen({ scenario, messages, sessionId, mode = "caller", onRestart }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [raw, setRaw] = useState("");
@@ -62,6 +62,7 @@ export default function FeedbackScreen({ scenario, messages, sessionId, onRestar
           scenarioId: scenario.id,
           messages,
           sessionId,
+          mode,
         });
         if (!cancelled) {
           setRaw(feedback);
@@ -77,7 +78,7 @@ export default function FeedbackScreen({ scenario, messages, sessionId, onRestar
     return () => {
       cancelled = true;
     };
-  }, [scenario.id, messages, sessionId]);
+  }, [scenario.id, messages, sessionId, mode]);
 
   const parsed = parseFeedback(raw);
 

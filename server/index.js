@@ -4,7 +4,13 @@ import compression from "compression";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { dispatcherSystemPrompt, feedbackPrompt, SCENARIO_META } from "./prompts.js";
+import {
+  dispatcherSystemPrompt,
+  pdDispatcherSystemPrompt,
+  callerSystemPrompt,
+  feedbackPrompt,
+  SCENARIO_META,
+} from "./prompts.js";
 import {
   patchSession,
   deleteSession,
@@ -34,29 +40,95 @@ function sanitizeMessages(messages) {
         typeof m.content === "string" &&
         m.content.trim().length > 0
     )
-    .map((m) => ({ role: m.role, content: m.content.trim() }))
+    .map((m) => ({
+      role: m.role,
+      content: m.content.trim(),
+      ...(m.agent ? { agent: m.agent } : {}),
+    }))
     .slice(-40);
 }
 
-function formatHistoryAsPrompt(history) {
-  if (history.length === 0) {
-    return "(The caller has just connected. Open the call now with your first line.)";
+function labelAssistant(m, currentAgent, mode) {
+  if (m.agent === "pd") return `POLICE DISPATCHER (earlier): ${m.content}`;
+  if (m.agent === "fres") return `FIRE RESCUE DISPATCHER (you, earlier line): ${m.content}`;
+  if (m.agent === "caller" || mode === "dispatcher") {
+    return `CALLER (you, earlier line): ${m.content}`;
   }
-  const lines = history.map((m) =>
-    m.role === "user"
-      ? `CALLER: ${m.content}`
-      : `YOU (dispatcher, earlier line): ${m.content}`
-  );
+  if (currentAgent === "fres") return `FIRE RESCUE DISPATCHER (you, earlier line): ${m.content}`;
+  return `YOU (dispatcher, earlier line): ${m.content}`;
+}
+
+function formatHistoryAsPrompt(history, opts = {}) {
+  const { agent = "fres", mode = "caller" } = opts;
+
+  if (history.length === 0) {
+    if (mode === "dispatcher") {
+      return "(The Fire Rescue line just lit up — a transferred 911 call. The dispatcher hasn't greeted you yet. If they have already spoken, respond as the panicked caller; otherwise wait.)";
+    }
+    if (agent === "pd") {
+      return "(A 911 call has just connected to your police-dispatch console. Open with your first line.)";
+    }
+    if (agent === "fres") {
+      return "(SCPD just transferred this caller to you on a three-way line. Open by greeting the caller as Fire Rescue.)";
+    }
+    return "(The caller has just connected. Open with your first line.)";
+  }
+
+  const lines = history.map((m) => {
+    if (m.role === "user") {
+      return mode === "dispatcher" ? `DISPATCHER: ${m.content}` : `CALLER: ${m.content}`;
+    }
+    return labelAssistant(m, agent, mode);
+  });
+
   const turnCount = history.filter((m) => m.role === "assistant").length;
-  const endCallHint =
-    turnCount >= 7
-      ? " If you have already dispatched units AND given at least one pre-arrival instruction, your next response should announce that crews are arriving on scene now (e.g. 'I can hear the sirens — crews are pulling up now.') and append [END_CALL]."
-      : "";
-  lines.push(
-    "",
-    `Respond with your next dispatcher line ONLY (1-2 short sentences, no prefix, no quotes).${endCallHint}`
-  );
+
+  let finalInstruction;
+  if (mode === "dispatcher") {
+    const endHint =
+      turnCount >= 6
+        ? " If the dispatcher just told you units are arriving on scene, thank them and append [END_CALL]."
+        : "";
+    finalInstruction = `Respond as the panicked caller with your next line ONLY (1-2 short sentences, no prefix, no quotes).${endHint}`;
+  } else if (agent === "pd") {
+    finalInstruction = "Respond with your next police-dispatch triage line ONLY (1 short sentence, no prefix, no quotes). Append [TRANSFER] if you're now handing off to Fire Rescue.";
+  } else {
+    const endHint =
+      turnCount >= 7
+        ? " If you have already dispatched units AND given at least one pre-arrival instruction, your next response should announce that crews are arriving on scene now (e.g. 'I can hear the sirens — crews are pulling up now.') and append [END_CALL]."
+        : "";
+    finalInstruction = `Respond with your next dispatcher line ONLY (1-2 short sentences, no prefix, no quotes).${endHint}`;
+  }
+
+  lines.push("", finalInstruction);
   return lines.join("\n");
+}
+
+function parseDispatchTag(text) {
+  if (!text) return null;
+  const match = text.match(/\[DISPATCH:([^\]]+)\]/);
+  if (!match) return null;
+  const fields = {};
+  for (const pair of match[1].split(";")) {
+    const idx = pair.indexOf("=");
+    if (idx < 0) continue;
+    const key = pair.slice(0, idx).trim().toLowerCase();
+    const val = pair.slice(idx + 1).trim();
+    if (key && val) fields[key] = val;
+  }
+  if (Object.keys(fields).length === 0) return null;
+  return {
+    department: fields.dept || fields.department || "Suffolk County Fire Rescue",
+    code: fields.code || "",
+    nature: fields.nature || "",
+    age: fields.age || "unknown",
+    location: fields.location || "",
+    timestamp: Date.now(),
+  };
+}
+
+function stripControlTags(text) {
+  return text.replace(/\[DISPATCH:[^\]]+\]/g, "").trim();
 }
 
 async function runQuery({ systemPrompt, userPrompt }) {
@@ -93,17 +165,42 @@ function extractEmdCode(feedback) {
 }
 
 app.post("/api/chat", async (req, res) => {
-  const { scenarioId, messages, dispatcher } = req.body || {};
+  const {
+    scenarioId,
+    messages,
+    dispatcher,
+    pd,
+    agent = "fres",
+    mode = "caller",
+    sessionId,
+  } = req.body || {};
   if (!scenarioId) {
     return res.status(400).json({ error: "scenarioId is required" });
   }
   const history = sanitizeMessages(messages);
 
+  let systemPrompt;
+  if (mode === "dispatcher") {
+    systemPrompt = callerSystemPrompt(scenarioId);
+  } else if (agent === "pd") {
+    systemPrompt = pdDispatcherSystemPrompt(scenarioId, pd);
+  } else {
+    const postTransfer = history.some((m) => m.agent === "pd");
+    systemPrompt = dispatcherSystemPrompt(scenarioId, dispatcher, { postTransfer });
+  }
+
   try {
     const reply = await runQuery({
-      systemPrompt: dispatcherSystemPrompt(scenarioId, dispatcher),
-      userPrompt: formatHistoryAsPrompt(history),
+      systemPrompt,
+      userPrompt: formatHistoryAsPrompt(history, { agent, mode }),
     });
+    // Extract [DISPATCH:...] from FRES dispatcher replies and broadcast to admin.
+    if (mode === "caller" && agent === "fres" && sessionId) {
+      const dispatchInfo = parseDispatchTag(reply);
+      if (dispatchInfo) {
+        patchSession(sessionId, { dispatch: dispatchInfo });
+      }
+    }
     res.json({ reply });
   } catch (err) {
     console.error("[chat] error:", err);
@@ -114,7 +211,7 @@ app.post("/api/chat", async (req, res) => {
 });
 
 app.post("/api/feedback", async (req, res) => {
-  const { scenarioId, messages, sessionId } = req.body || {};
+  const { scenarioId, messages, sessionId, mode = "caller" } = req.body || {};
   if (!scenarioId) {
     return res.status(400).json({ error: "scenarioId is required" });
   }
@@ -134,14 +231,27 @@ app.post("/api/feedback", async (req, res) => {
   }
 
   const transcript = history
-    .map((m) => `${m.role === "user" ? "Caller" : "Dispatcher"}: ${m.content}`)
+    .map((m) => {
+      if (mode === "dispatcher") {
+        return m.role === "user"
+          ? `Dispatcher (youth): ${m.content}`
+          : `Caller (AI): ${m.content}`;
+      }
+      const label =
+        m.role === "user"
+          ? "Caller"
+          : m.agent === "pd"
+            ? "Police Dispatcher"
+            : "Fire Rescue Dispatcher";
+      return `${label}: ${m.content}`;
+    })
     .join("\n");
 
   try {
     const feedback = await runQuery({
       systemPrompt:
         "You are a friendly coach reviewing a Suffolk County FRES 911 training call for a youth explorer (12-17). Follow the user's formatting instructions exactly. Stay encouraging and specific.",
-      userPrompt: feedbackPrompt(scenarioId, transcript),
+      userPrompt: feedbackPrompt(scenarioId, transcript, mode),
     });
     const emdCode = extractEmdCode(feedback);
     if (sessionId) {
@@ -174,6 +284,9 @@ const PATCHABLE = [
   "emdCode",
   "expectedEmdCode",
   "callerName",
+  "mode",
+  "dispatch",
+  "agent",
 ];
 
 app.post("/api/admin/session/:id", (req, res) => {
