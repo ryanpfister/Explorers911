@@ -55,14 +55,18 @@ export default function HomeScreen({ onPick, supportWarning }) {
 
       <div className="w-full mb-3">
         <label className="block text-stone-400 text-[11px] uppercase tracking-widest mb-1.5">
-          Your first name (optional)
+          Your first name <span className="text-red-400">*</span>
         </label>
         <input
           type="text"
           value={callerName}
           onChange={(e) => setCallerName(e.target.value.slice(0, 24))}
-          placeholder="e.g. Sam"
-          className="w-full rounded-xl bg-stone-800 border border-stone-700 text-stone-100 px-3 py-2.5 text-base placeholder:text-stone-500 focus:outline-none focus:border-stone-500"
+          placeholder="Required — used in feedback + leaderboard"
+          className={`w-full rounded-xl bg-stone-800 border text-stone-100 px-3 py-2.5 text-base placeholder:text-stone-500 focus:outline-none ${
+            callerName.trim()
+              ? "border-stone-700 focus:border-stone-500"
+              : "border-red-700/60 focus:border-red-500"
+          }`}
           autoComplete="given-name"
         />
       </div>
@@ -103,8 +107,16 @@ export default function HomeScreen({ onPick, supportWarning }) {
         </div>
       )}
 
+      {!callerName.trim() && (
+        <div className="w-full mb-3 rounded-lg border border-red-800/60 bg-red-950/30 text-red-200 text-sm p-3">
+          Enter your first name above to start a call.
+        </div>
+      )}
+
       <button
+        disabled={!callerName.trim()}
         onClick={() => {
+          if (!callerName.trim()) return;
           const pool = category === "all"
             ? SCENARIOS
             : SCENARIOS.filter((s) => s.category === category);
@@ -112,7 +124,7 @@ export default function HomeScreen({ onPick, supportWarning }) {
           const pick = pool[Math.floor(Math.random() * pool.length)];
           onPick(pick, mode, { callerName: callerName.trim(), difficulty });
         }}
-        className="w-full mb-4 rounded-2xl bg-gradient-to-br from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 border border-red-500 text-white p-4 flex items-center gap-4 shadow-lg active:scale-[0.99] transition"
+        className="w-full mb-4 rounded-2xl bg-gradient-to-br from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 border border-red-500 text-white p-4 flex items-center gap-4 shadow-lg active:scale-[0.99] transition disabled:opacity-40 disabled:cursor-not-allowed"
       >
         <div className="text-4xl" aria-hidden>🎲</div>
         <div className="flex-1 text-left">
@@ -144,8 +156,12 @@ export default function HomeScreen({ onPick, supportWarning }) {
         {filtered.map((s) => (
           <button
             key={s.id}
-            onClick={() => onPick(s, mode, { callerName: callerName.trim(), difficulty })}
-            className="w-full text-left rounded-2xl bg-stone-800 hover:bg-stone-700 active:bg-stone-700 border border-stone-700 p-4 flex items-start gap-4 transition"
+            disabled={!callerName.trim()}
+            onClick={() => {
+              if (!callerName.trim()) return;
+              onPick(s, mode, { callerName: callerName.trim(), difficulty });
+            }}
+            className="w-full text-left rounded-2xl bg-stone-800 hover:bg-stone-700 active:bg-stone-700 border border-stone-700 p-4 flex items-start gap-4 transition disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <div className="text-3xl pt-0.5" aria-hidden>
               {s.emoji}

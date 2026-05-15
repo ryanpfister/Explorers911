@@ -229,6 +229,16 @@ function SessionCard({ s, onSelect, now }) {
         <span className="font-mono text-stone-500 truncate">
           {s.emdCode || `→ ${s.expectedEmdCode || "—"}`}
         </span>
+        {typeof s.score === "number" && (
+          <span className={`ml-auto font-bold tabular-nums ${
+            s.score >= 90 ? "text-emerald-300"
+            : s.score >= 75 ? "text-sky-300"
+            : s.score >= 60 ? "text-amber-300"
+            : "text-red-300"
+          }`}>
+            {s.score}
+          </span>
+        )}
       </div>
 
       <div className="grid grid-cols-4 gap-1 text-[10px]">
@@ -497,6 +507,7 @@ export default function AdminScreen() {
   const [latestDispatch, setLatestDispatch] = useState(null);
   const [audioReady, setAudioReady] = useState(false);
   const [reviewing, setReviewing] = useState(false);
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
   const spokenDispatchKeys = useRef(new Set());
 
   useEffect(() => {
@@ -594,6 +605,12 @@ export default function AdminScreen() {
     return arr.sort((a, b) => (a.startedAt || 0) - (b.startedAt || 0));
   }, [sessions]);
 
+  const leaderboard = useMemo(() => {
+    return Object.values(sessions)
+      .filter((s) => typeof s.score === "number")
+      .sort((a, b) => (b.score || 0) - (a.score || 0));
+  }, [sessions]);
+
   return (
     <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col">
       {/* Header */}
@@ -686,6 +703,14 @@ export default function AdminScreen() {
             🎬 Session Review ({reviewable.length})
           </button>
           <button
+            onClick={() => setLeaderboardOpen(true)}
+            disabled={leaderboard.length === 0}
+            className="px-3 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 border border-amber-600 text-white text-sm font-bold disabled:opacity-30 disabled:cursor-not-allowed"
+            title={leaderboard.length === 0 ? "No scored calls yet" : "Show top scores"}
+          >
+            🏆 Leaderboard ({leaderboard.length})
+          </button>
+          <button
             onClick={() => {
               if (confirm("Clear ALL sessions from the projector?")) {
                 resetAdmin();
@@ -762,6 +787,82 @@ export default function AdminScreen() {
           onClose={() => setReviewing(false)}
         />
       )}
+
+      {leaderboardOpen && (
+        <LeaderboardModal
+          entries={leaderboard}
+          onClose={() => setLeaderboardOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function LeaderboardModal({ entries, onClose }) {
+  const medal = (rank) => (rank === 0 ? "🥇" : rank === 1 ? "🥈" : rank === 2 ? "🥉" : "");
+  return (
+    <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-6" onClick={onClose}>
+      <div className="bg-stone-950 border border-stone-800 rounded-3xl w-full max-w-3xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="px-8 py-5 border-b border-stone-800 flex items-center justify-between">
+          <div className="flex items-baseline gap-3">
+            <div className="text-4xl">🏆</div>
+            <div>
+              <div className="text-stone-100 text-2xl font-black tracking-tight">Leaderboard</div>
+              <div className="text-stone-400 text-sm">Top callers from this training session</div>
+            </div>
+          </div>
+          <button onClick={onClose} className="px-4 py-2 rounded-lg bg-stone-800 hover:bg-stone-700 border border-stone-700 text-stone-200 text-sm">
+            Close
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-8 py-5">
+          {entries.length === 0 ? (
+            <div className="text-stone-500 text-center py-12">No scored calls yet.</div>
+          ) : (
+            <div className="space-y-2">
+              {entries.map((s, i) => {
+                const scenario = s.scenarioId ? scenarioById(s.scenarioId) : null;
+                const scoreColor =
+                  s.score >= 90 ? "text-emerald-300 bg-emerald-900/30 border-emerald-700/50"
+                  : s.score >= 75 ? "text-sky-300 bg-sky-900/30 border-sky-700/50"
+                  : s.score >= 60 ? "text-amber-300 bg-amber-900/30 border-amber-700/50"
+                  : "text-red-300 bg-red-900/30 border-red-700/50";
+                const rowColor =
+                  i === 0 ? "bg-amber-950/40 border-amber-800/60"
+                  : i === 1 ? "bg-stone-800/60 border-stone-700"
+                  : i === 2 ? "bg-amber-900/20 border-amber-900/50"
+                  : "bg-stone-900 border-stone-800";
+                return (
+                  <div key={s.id} className={`flex items-center gap-4 rounded-2xl border px-4 py-3 ${rowColor}`}>
+                    <div className="text-2xl font-black text-stone-300 w-10 text-center">
+                      {medal(i) || `#${i + 1}`}
+                    </div>
+                    <div className="text-3xl">{scenario?.emoji || "📞"}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-stone-100 text-lg font-bold truncate">
+                        {s.callerName || "Anonymous"}
+                      </div>
+                      <div className="text-stone-400 text-xs truncate">
+                        {scenario?.title || "Unknown"} · {scenario?.location || ""}
+                      </div>
+                      {s.emdCode && (
+                        <div className="text-stone-500 text-[11px] font-mono mt-0.5">
+                          {s.emdCode}
+                          {s.expectedEmdCode && ` · target ${s.expectedEmdCode}`}
+                        </div>
+                      )}
+                    </div>
+                    <div className={`text-3xl font-black tabular-nums px-4 py-1.5 rounded-xl border ${scoreColor}`}>
+                      {s.score}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

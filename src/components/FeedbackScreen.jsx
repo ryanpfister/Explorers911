@@ -3,6 +3,7 @@ import { fetchFeedback } from "../lib/api.js";
 
 function parseFeedback(text) {
   const out = {
+    score: null,
     overall: "",
     didWell: [],
     remember: [],
@@ -12,6 +13,8 @@ function parseFeedback(text) {
     keyMissed: "",
   };
   if (!text) return out;
+  const scoreMatch = text.match(/SCORE:\s*(\d{1,3})/i);
+  if (scoreMatch) out.score = Math.max(0, Math.min(100, parseInt(scoreMatch[1], 10)));
 
   const lines = text.split(/\r?\n/).map((l) => l.trim());
   let current = null;
@@ -95,6 +98,10 @@ export default function FeedbackScreen({ scenario, messages, sessionId, mode = "
           Target: FRES {scenario.expectedDeterminant}
         </div>
       </div>
+
+      {!loading && !error && parsed.score !== null && (
+        <ScoreCard score={parsed.score} />
+      )}
 
       {loading && (
         <div className="flex-1 flex flex-col items-center justify-center text-stone-400">
@@ -224,6 +231,29 @@ export default function FeedbackScreen({ scenario, messages, sessionId, mode = "
         >
           Try Another Scenario
         </button>
+      </div>
+    </div>
+  );
+}
+
+function ScoreCard({ score }) {
+  const grade =
+    score >= 90 ? { label: "Excellent", color: "from-emerald-600 to-emerald-700", text: "text-emerald-300" }
+    : score >= 75 ? { label: "Strong", color: "from-sky-600 to-sky-700", text: "text-sky-300" }
+    : score >= 60 ? { label: "Good effort", color: "from-amber-600 to-amber-700", text: "text-amber-300" }
+    : { label: "Keep practicing", color: "from-red-600 to-red-700", text: "text-red-300" };
+
+  return (
+    <div className={`rounded-2xl bg-gradient-to-br ${grade.color} p-5 mb-4 text-center shadow-lg`}>
+      <div className="text-white/80 text-[10px] uppercase tracking-widest font-bold">
+        Your Score
+      </div>
+      <div className="text-white text-6xl font-black tabular-nums leading-none mt-1">
+        {score}
+        <span className="text-2xl text-white/70 font-bold align-top">/100</span>
+      </div>
+      <div className={`text-white text-sm font-semibold mt-1`}>
+        {grade.label}
       </div>
     </div>
   );

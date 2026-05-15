@@ -172,6 +172,15 @@ function extractEmdCode(feedback) {
   return match ? match[1].trim() : null;
 }
 
+function extractScore(feedback) {
+  if (!feedback) return null;
+  const match = feedback.match(/SCORE:\s*(\d{1,3})/i);
+  if (!match) return null;
+  const n = parseInt(match[1], 10);
+  if (Number.isNaN(n)) return null;
+  return Math.max(0, Math.min(100, n));
+}
+
 app.post("/api/chat", async (req, res) => {
   const {
     scenarioId,
@@ -269,14 +278,16 @@ app.post("/api/feedback", async (req, res) => {
       userPrompt: feedbackPrompt(scenarioId, transcript, mode),
     });
     const emdCode = extractEmdCode(feedback);
+    const score = extractScore(feedback);
     if (sessionId) {
       patchSession(sessionId, {
         feedback,
         emdCode,
+        score,
         status: "feedback-ready",
       });
     }
-    res.json({ feedback });
+    res.json({ feedback, score });
   } catch (err) {
     console.error("[feedback] error:", err);
     res
@@ -304,6 +315,7 @@ const PATCHABLE = [
   "agent",
   "difficulty",
   "hasRecording",
+  "score",
 ];
 
 app.post("/api/admin/session/:id", (req, res) => {
