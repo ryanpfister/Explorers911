@@ -7,21 +7,42 @@ function pickDispatcherVoice(voices) {
   if (!voices || voices.length === 0) return null;
   const english = voices.filter((v) => v.lang && v.lang.toLowerCase().startsWith("en"));
   const pool = english.length ? english : voices;
-  // Prefer calm, professional female-sounding voices when available.
   const preferred = [
+    "Samantha", // macOS / iOS Safari default — high quality
     "Google US English",
-    "Samantha",
     "Microsoft Aria Online (Natural) - English (United States)",
     "Microsoft Jenny Online (Natural) - English (United States)",
     "Karen",
     "Victoria",
+    "Allison",
   ];
   for (const name of preferred) {
     const match = pool.find((v) => v.name === name);
     if (match) return match;
   }
-  const female = pool.find((v) => /female|samantha|victoria|karen|aria|jenny|zira/i.test(v.name));
+  const female = pool.find((v) =>
+    /female|samantha|victoria|karen|aria|jenny|zira|allison/i.test(v.name)
+  );
   return female || pool[0];
+}
+
+/**
+ * Must be called from a direct user gesture (e.g. a click handler) to
+ * unlock speech synthesis on iOS Safari. Triggers a near-silent
+ * utterance to commit the audio output stream. Safe to call repeatedly.
+ */
+export function primeSpeechSynthesis() {
+  if (!speechSynthesisSupported) return;
+  try {
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(" ");
+    u.volume = 0.01;
+    u.rate = 1;
+    u.pitch = 1;
+    window.speechSynthesis.speak(u);
+  } catch {
+    // ignore
+  }
 }
 
 export function useSpeechSynthesis() {
@@ -47,6 +68,11 @@ export function useSpeechSynthesis() {
       onEnd?.();
       return;
     }
+    // Re-pick the voice in case voices loaded after first render (Safari).
+    if (!voiceRef.current) {
+      const voices = window.speechSynthesis.getVoices();
+      voiceRef.current = pickDispatcherVoice(voices);
+    }
     window.speechSynthesis.cancel();
     const utter = new SpeechSynthesisUtterance(text);
     if (voiceRef.current) utter.voice = voiceRef.current;
@@ -63,7 +89,16 @@ export function useSpeechSynthesis() {
       setSpeaking(false);
       onEndRef.current?.();
     };
-    window.speechSynthesis.speak(utter);
+    // Safari sometimes drops the first speak() if invoked too quickly
+    // after cancel(); a microtask defer makes it reliable.
+    setTimeout(() => {
+      try {
+        window.speechSynthesis.speak(utter);
+      } catch {
+        setSpeaking(false);
+        onEndRef.current?.();
+      }
+    }, 30);
   }, []);
 
   const stop = useCallback(() => {

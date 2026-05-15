@@ -2,39 +2,51 @@ import React, { useEffect, useState } from "react";
 import { fetchFeedback } from "../lib/api.js";
 
 function parseFeedback(text) {
-  const sections = {
+  const out = {
     overall: "",
     didWell: [],
     remember: [],
     takeaway: "",
+    emdCode: "",
+    caseEntry: "",
+    keyMissed: "",
   };
-  if (!text) return sections;
+  if (!text) return out;
 
   const lines = text.split(/\r?\n/).map((l) => l.trim());
   let current = null;
   for (const line of lines) {
     if (!line) continue;
     if (/^OVERALL\s*:/i.test(line)) {
-      sections.overall = line.replace(/^OVERALL\s*:/i, "").trim();
+      out.overall = line.replace(/^OVERALL\s*:/i, "").trim();
       current = "overall";
     } else if (/^WHAT YOU DID WELL\s*:?/i.test(line)) {
       current = "didWell";
     } else if (/^WHAT TO REMEMBER NEXT TIME\s*:?/i.test(line)) {
       current = "remember";
     } else if (/^KEY TAKEAWAY\s*:/i.test(line)) {
-      sections.takeaway = line.replace(/^KEY TAKEAWAY\s*:/i, "").trim();
+      out.takeaway = line.replace(/^KEY TAKEAWAY\s*:/i, "").trim();
       current = "takeaway";
+    } else if (/^EMD CODE\s*:/i.test(line)) {
+      out.emdCode = line.replace(/^EMD CODE\s*:/i, "").trim();
+      current = "emdCode";
+    } else if (/^CASE ENTRY COVERED\s*:/i.test(line)) {
+      out.caseEntry = line.replace(/^CASE ENTRY COVERED\s*:/i, "").trim();
+      current = "caseEntry";
+    } else if (/^KEY QUESTIONS MISSED\s*:/i.test(line)) {
+      out.keyMissed = line.replace(/^KEY QUESTIONS MISSED\s*:/i, "").trim();
+      current = "keyMissed";
     } else if (line.startsWith("-") || line.startsWith("•")) {
       const item = line.replace(/^[-•]\s*/, "").trim();
-      if (current === "didWell") sections.didWell.push(item);
-      else if (current === "remember") sections.remember.push(item);
-    } else if (current === "overall" && !sections.overall) {
-      sections.overall = line;
-    } else if (current === "takeaway" && !sections.takeaway) {
-      sections.takeaway = line;
+      if (current === "didWell") out.didWell.push(item);
+      else if (current === "remember") out.remember.push(item);
+    } else if (current === "overall" && !out.overall) {
+      out.overall = line;
+    } else if (current === "takeaway" && !out.takeaway) {
+      out.takeaway = line;
     }
   }
-  return sections;
+  return out;
 }
 
 export default function FeedbackScreen({ scenario, messages, onRestart }) {
@@ -77,6 +89,9 @@ export default function FeedbackScreen({ scenario, messages, onRestart }) {
         <div className="text-stone-100 text-2xl font-bold mt-1">
           {scenario.title}
         </div>
+        <div className="text-stone-500 text-xs mt-1 font-mono">
+          Target: FRES {scenario.expectedDeterminant}
+        </div>
       </div>
 
       {loading && (
@@ -93,7 +108,7 @@ export default function FeedbackScreen({ scenario, messages, onRestart }) {
       )}
 
       {!loading && !error && (
-        <div className="space-y-5">
+        <div className="space-y-4">
           {parsed.overall && (
             <div className="rounded-2xl bg-stone-800 border border-stone-700 p-5">
               <div className="text-xs uppercase tracking-widest text-red-400 mb-1.5">
@@ -105,6 +120,20 @@ export default function FeedbackScreen({ scenario, messages, onRestart }) {
             </div>
           )}
 
+          {parsed.emdCode && (
+            <div className="rounded-2xl bg-stone-800 border border-stone-700 p-5">
+              <div className="text-xs uppercase tracking-widest text-sky-400 mb-1.5">
+                EMD Code Assigned
+              </div>
+              <div className="text-stone-100 text-base font-mono leading-snug">
+                {parsed.emdCode}
+              </div>
+              <div className="text-stone-500 text-xs mt-2">
+                Expected: FRES {scenario.expectedDeterminant} — {scenario.expectedName}
+              </div>
+            </div>
+          )}
+
           {parsed.didWell.length > 0 && (
             <div className="rounded-2xl bg-stone-800 border border-stone-700 p-5">
               <div className="text-xs uppercase tracking-widest text-green-400 mb-2">
@@ -112,7 +141,10 @@ export default function FeedbackScreen({ scenario, messages, onRestart }) {
               </div>
               <ul className="space-y-2">
                 {parsed.didWell.map((item, i) => (
-                  <li key={i} className="text-stone-100 text-sm leading-snug flex gap-2">
+                  <li
+                    key={i}
+                    className="text-stone-100 text-sm leading-snug flex gap-2"
+                  >
                     <span className="text-green-400">•</span>
                     <span>{item}</span>
                   </li>
@@ -128,12 +160,39 @@ export default function FeedbackScreen({ scenario, messages, onRestart }) {
               </div>
               <ul className="space-y-2">
                 {parsed.remember.map((item, i) => (
-                  <li key={i} className="text-stone-100 text-sm leading-snug flex gap-2">
+                  <li
+                    key={i}
+                    className="text-stone-100 text-sm leading-snug flex gap-2"
+                  >
                     <span className="text-amber-400">•</span>
                     <span>{item}</span>
                   </li>
                 ))}
               </ul>
+            </div>
+          )}
+
+          {(parsed.caseEntry || parsed.keyMissed) && (
+            <div className="rounded-2xl bg-stone-800 border border-stone-700 p-5 space-y-3">
+              <div className="text-xs uppercase tracking-widest text-stone-400">
+                Protocol Coverage
+              </div>
+              {parsed.caseEntry && (
+                <div>
+                  <div className="text-[11px] uppercase tracking-widest text-emerald-400 mb-0.5">
+                    Case Entry Covered
+                  </div>
+                  <div className="text-stone-200 text-sm">{parsed.caseEntry}</div>
+                </div>
+              )}
+              {parsed.keyMissed && (
+                <div>
+                  <div className="text-[11px] uppercase tracking-widest text-amber-400 mb-0.5">
+                    Key Questions Missed
+                  </div>
+                  <div className="text-stone-200 text-sm">{parsed.keyMissed}</div>
+                </div>
+              )}
             </div>
           )}
 

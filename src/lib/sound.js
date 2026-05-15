@@ -9,6 +9,25 @@ function audioCtx() {
   return ctx;
 }
 
+/**
+ * Must be called from a direct user gesture (e.g. a click handler) to
+ * unlock the WebAudio context on iOS Safari. Safe to call repeatedly.
+ */
+export function primeAudio() {
+  const ac = audioCtx();
+  if (!ac) return;
+  // Schedule a silent buffer so iOS commits to keeping the context open.
+  try {
+    const buffer = ac.createBuffer(1, 1, 22050);
+    const src = ac.createBufferSource();
+    src.buffer = buffer;
+    src.connect(ac.destination);
+    src.start(0);
+  } catch {
+    // ignore
+  }
+}
+
 function tone({ freq, duration, when = 0, type = "sine", gain = 0.15 }) {
   const ac = audioCtx();
   if (!ac) return;
@@ -27,7 +46,6 @@ function tone({ freq, duration, when = 0, type = "sine", gain = 0.15 }) {
 }
 
 export function playRing() {
-  // Two short rings, classic phone cadence.
   for (let i = 0; i < 2; i++) {
     const base = i * 1.0;
     tone({ freq: 480, duration: 0.4, when: base, gain: 0.12 });

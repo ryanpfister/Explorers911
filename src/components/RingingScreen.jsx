@@ -11,9 +11,21 @@ export default function RingingScreen({ scenario, onConnected, onCancel }) {
   return (
     <div className="min-h-full flex flex-col items-center justify-between px-5 py-10 max-w-md mx-auto">
       <div className="text-center">
-        <div className="text-stone-400 text-sm uppercase tracking-widest">Calling…</div>
-        <div className="text-red-500 text-6xl font-black tracking-tight mt-2">911</div>
+        <div className="text-stone-400 text-sm uppercase tracking-widest">
+          Calling…
+        </div>
+        <div className="text-red-500 text-6xl font-black tracking-tight mt-2">
+          911
+        </div>
         <div className="text-stone-300 text-base mt-3">{scenario?.title}</div>
+        {scenario?.brief && (
+          <div className="mt-4 mx-auto max-w-xs rounded-xl border border-stone-700 bg-stone-800/60 px-4 py-3 text-stone-200 text-sm leading-snug">
+            <div className="text-[10px] uppercase tracking-widest text-stone-400 mb-1">
+              Your situation
+            </div>
+            {scenario.brief}
+          </div>
+        )}
       </div>
 
       <div className="text-7xl origin-center animate-ring-shake" aria-hidden>

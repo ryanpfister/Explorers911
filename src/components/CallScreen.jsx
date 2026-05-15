@@ -3,6 +3,7 @@ import { useSpeechRecognition } from "../hooks/useSpeechRecognition.js";
 import { useSpeechSynthesis } from "../hooks/useSpeechSynthesis.js";
 import { dispatcherReply } from "../lib/api.js";
 import { playBlip, playEndBeep } from "../lib/sound.js";
+import { reportAdmin } from "../lib/admin.js";
 
 const END_TAG = "[END_CALL]";
 
@@ -21,15 +22,24 @@ export default function CallScreen({ scenario, onEnd }) {
   const [error, setError] = useState(null);
   const [endedReason, setEndedReason] = useState(null);
   const scrollRef = useRef(null);
+  const endSentinelRef = useRef(null);
   const endedRef = useRef(false);
 
   const synth = useSpeechSynthesis();
+
+  // Keep an up-to-date ref of messages so the end-of-speech callback
+  // can hand the full transcript to the feedback step.
+  const messagesRef = useRef(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   const sendToDispatcher = useCallback(
     async (history) => {
       if (endedRef.current) return;
       setThinking(true);
       setError(null);
+      reportAdmin({ callerStatus: "thinking", messages: history });
       try {
         const { reply } = await dispatcherReply({
           scenarioId: scenario.id,
@@ -37,14 +47,25 @@ export default function CallScreen({ scenario, onEnd }) {
         });
         const isFinal = reply.includes(END_TAG);
         const cleaned = reply.replace(END_TAG, "").trim();
-        setMessages((m) => [...m, { role: "assistant", content: cleaned }]);
+        const next = [...history, { role: "assistant", content: cleaned }];
+        setMessages(next);
         setThinking(false);
+        reportAdmin({
+          callerStatus: "speaking-dispatcher",
+          messages: next,
+        });
         synth.speak(cleaned, {
           onEnd: () => {
+            reportAdmin({ callerStatus: null });
             if (isFinal && !endedRef.current) {
               endedRef.current = true;
               setEndedReason("dispatched");
               playEndBeep();
+              reportAdmin({
+                status: "ended",
+                endedAt: Date.now(),
+                callerStatus: null,
+              });
               setTimeout(() => onEnd(messagesRef.current), 1200);
             }
           },
@@ -52,17 +73,11 @@ export default function CallScreen({ scenario, onEnd }) {
       } catch (e) {
         setThinking(false);
         setError(e.message || "Something went wrong.");
+        reportAdmin({ callerStatus: null });
       }
     },
     [scenario.id, synth, onEnd]
   );
-
-  // Keep an up-to-date ref of messages so the end-of-speech callback can
-  // hand the full transcript to the feedback step.
-  const messagesRef = useRef(messages);
-  useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
 
   const handleFinalTranscript = useCallback(
     (text) => {
@@ -76,11 +91,27 @@ export default function CallScreen({ scenario, onEnd }) {
 
   const stt = useSpeechRecognition({ onFinalResult: handleFinalTranscript });
 
-  // Kick the call off: ask dispatcher for the opener.
+  // Initial: announce session to admin, then kick off opener.
   useEffect(() => {
+    reportAdmin({
+      status: "in-call",
+      scenarioId: scenario.id,
+      startedAt: Date.now(),
+      messages: [],
+      interim: "",
+      feedback: null,
+      emdCode: null,
+      endedAt: null,
+    });
     sendToDispatcher([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Push interim transcripts to admin too, so the projector sees the
+  // caller's words live as they speak.
+  useEffect(() => {
+    reportAdmin({ interim: stt.interim });
+  }, [stt.interim]);
 
   // Call timer.
   useEffect(() => {
@@ -88,17 +119,25 @@ export default function CallScreen({ scenario, onEnd }) {
     return () => clearInterval(t);
   }, []);
 
-  // Auto-scroll transcript.
+  // Auto-scroll transcript on every change. Use the sentinel div so we
+  // pin to the very bottom even when content grows mid-frame.
   useEffect(() => {
-    const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    const sentinel = endSentinelRef.current;
+    const container = scrollRef.current;
+    if (sentinel && container) {
+      // requestAnimationFrame avoids racing layout when interim text
+      // expands by a single character per frame on Chrome.
+      requestAnimationFrame(() => {
+        container.scrollTop = container.scrollHeight;
+      });
+    }
   }, [messages, thinking, stt.interim]);
 
   const handleMicDown = useCallback(() => {
     if (endedRef.current || thinking) return;
-    // Interrupt the dispatcher if they're still talking.
     if (synth.speaking) synth.stop();
     playBlip();
+    reportAdmin({ callerStatus: "listening" });
     stt.start();
   }, [stt, synth, thinking]);
 
@@ -114,6 +153,11 @@ export default function CallScreen({ scenario, onEnd }) {
     synth.stop();
     stt.cancel();
     playEndBeep();
+    reportAdmin({
+      status: "ended",
+      endedAt: Date.now(),
+      callerStatus: null,
+    });
     setTimeout(() => onEnd(messagesRef.current), 400);
   }, [synth, stt, onEnd]);
 
@@ -122,8 +166,12 @@ export default function CallScreen({ scenario, onEnd }) {
       {/* Header */}
       <div className="px-5 pt-6 pb-4 flex items-center justify-between border-b border-stone-800">
         <div>
-          <div className="text-stone-400 text-xs uppercase tracking-widest">In Call</div>
-          <div className="text-stone-100 text-lg font-bold mt-0.5">911 Dispatcher</div>
+          <div className="text-stone-400 text-xs uppercase tracking-widest">
+            In Call · {scenario.title}
+          </div>
+          <div className="text-stone-100 text-lg font-bold mt-0.5">
+            Suffolk County 911
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <span
@@ -194,6 +242,8 @@ export default function CallScreen({ scenario, onEnd }) {
             {error}
           </div>
         )}
+
+        <div ref={endSentinelRef} />
       </div>
 
       {/* Controls */}
