@@ -7,13 +7,29 @@ const SpeechRecognitionImpl =
 
 export const speechRecognitionSupported = Boolean(SpeechRecognitionImpl);
 
-export function useSpeechRecognition({ onFinalResult } = {}) {
+/**
+ * Continuous speech recognition with silence-based turn detection.
+ * - Mic is always on while `listening` is true.
+ * - When the caller stops speaking for `silenceMs`, the accumulated
+ *   final transcript is committed via `onFinalResult`.
+ * - Call `pause()` to halt mic input while the dispatcher TTS is
+ *   speaking (prevents the dispatcher's own voice from being echoed
+ *   back into the transcript). Call `resume()` afterwards.
+ */
+export function useSpeechRecognition({
+  onFinalResult,
+  silenceMs = 1500,
+} = {}) {
   const [interim, setInterim] = useState("");
   const [listening, setListening] = useState(false);
   const [error, setError] = useState(null);
+
   const recognitionRef = useRef(null);
   const finalTextRef = useRef("");
+  const silenceTimerRef = useRef(null);
   const onFinalRef = useRef(onFinalResult);
+  const wantRunningRef = useRef(false); // is the call "active and listening"?
+  const isPausedRef = useRef(false); // dispatcher speaking → drop final commits
 
   useEffect(() => {
     onFinalRef.current = onFinalResult;
@@ -21,12 +37,26 @@ export function useSpeechRecognition({ onFinalResult } = {}) {
 
   useEffect(() => {
     if (!SpeechRecognitionImpl) return;
-    const recognition = new SpeechRecognitionImpl();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = "en-US";
+    const rec = new SpeechRecognitionImpl();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = "en-US";
 
-    recognition.onresult = (event) => {
+    const scheduleCommit = () => {
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = setTimeout(() => {
+        const text = finalTextRef.current.trim();
+        if (text && !isPausedRef.current) {
+          finalTextRef.current = "";
+          setInterim("");
+          onFinalRef.current?.(text);
+        }
+      }, silenceMs);
+    };
+
+    rec.onresult = (event) => {
+      if (isPausedRef.current) return; // ignore anything during dispatcher TTS
+
       let interimText = "";
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const res = event.results[i];
@@ -37,68 +67,102 @@ export function useSpeechRecognition({ onFinalResult } = {}) {
         }
       }
       setInterim(interimText);
-    };
-
-    recognition.onerror = (e) => {
-      if (e.error !== "no-speech" && e.error !== "aborted") {
-        setError(e.error);
+      if (finalTextRef.current.trim() || interimText) {
+        scheduleCommit();
       }
     };
 
-    recognition.onend = () => {
+    rec.onerror = (e) => {
+      if (e.error === "no-speech" || e.error === "aborted") return;
+      console.warn("[stt] error:", e.error, e.message);
+      setError(e.error);
+    };
+
+    rec.onstart = () => setListening(true);
+
+    rec.onend = () => {
       setListening(false);
-      const final = finalTextRef.current.trim();
-      finalTextRef.current = "";
-      setInterim("");
-      if (final && onFinalRef.current) {
-        onFinalRef.current(final);
+      // The browser auto-stops continuous recognition after ~60 s of
+      // silence. If the call is still active and not paused, restart.
+      if (wantRunningRef.current && !isPausedRef.current) {
+        setTimeout(() => {
+          if (wantRunningRef.current && !isPausedRef.current) {
+            try {
+              rec.start();
+              setListening(true);
+            } catch {
+              // already running
+            }
+          }
+        }, 120);
       }
     };
 
-    recognitionRef.current = recognition;
+    recognitionRef.current = rec;
 
     return () => {
+      wantRunningRef.current = false;
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       try {
-        recognition.abort();
+        rec.abort();
       } catch {
         // ignore
       }
     };
-  }, []);
+  }, [silenceMs]);
 
   const start = useCallback(() => {
-    if (!recognitionRef.current || listening) return;
+    if (!recognitionRef.current) return;
+    wantRunningRef.current = true;
+    isPausedRef.current = false;
     setError(null);
+    try {
+      recognitionRef.current.start();
+      setListening(true);
+    } catch {
+      // already started
+    }
+  }, []);
+
+  const pause = useCallback(() => {
+    isPausedRef.current = true;
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    finalTextRef.current = "";
+    setInterim("");
+    try {
+      recognitionRef.current?.stop();
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const resume = useCallback(() => {
+    if (!recognitionRef.current) return;
+    if (!wantRunningRef.current) return;
+    isPausedRef.current = false;
     finalTextRef.current = "";
     setInterim("");
     try {
       recognitionRef.current.start();
       setListening(true);
-    } catch (e) {
-      setError(e.message);
+    } catch {
+      // already running
     }
-  }, [listening]);
+  }, []);
 
   const stop = useCallback(() => {
-    if (!recognitionRef.current || !listening) return;
-    try {
-      recognitionRef.current.stop();
-    } catch {
-      // ignore
-    }
-  }, [listening]);
-
-  const cancel = useCallback(() => {
-    if (!recognitionRef.current) return;
+    wantRunningRef.current = false;
+    isPausedRef.current = false;
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     finalTextRef.current = "";
     setInterim("");
     try {
-      recognitionRef.current.abort();
+      recognitionRef.current?.abort();
     } catch {
       // ignore
     }
     setListening(false);
   }, []);
 
-  return { start, stop, cancel, interim, listening, error };
+  return { start, pause, resume, stop, interim, listening, error };
 }
